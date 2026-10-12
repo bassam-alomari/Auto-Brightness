@@ -1,0 +1,12 @@
+include README.md README.ar.md LICENSE CHANGELOG.md CONTRIBUTING.md
+include Setup.cmd Start.cmd requirements.txt .gitignore
+recursive-include docs *.md
+recursive-include docs *.png
+recursive-include tests *.py
+recursive-include .github *.yml
+recursive-include src/room_brightness *.ps1
+
+include THIRD_PARTY_NOTICES.md
+recursive-include src/room_brightness *.json *.svg
+
+recursive-include src/room_brightness *.ico *.png
