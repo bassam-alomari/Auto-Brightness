@@ -1,4 +1,4 @@
-param([int]$Start,[int]$Target)
+param([int]$Start,[int]$Target,[ValidateSet(1,4,8)][int]$Duration=4)
 $ErrorActionPreference='Stop'
 try {
  if($Start -lt 0 -or $Start -gt 100 -or $Target -lt 0 -or $Target -gt 100){throw 'Invalid brightness range'}
@@ -10,11 +10,11 @@ try {
  if($actual -ne $Start){Write-Output "M $actual"; exit 0}
  # Ask the display provider to fade once over four seconds instead of
  # sending many discrete backlight requests. Support is driver-dependent.
- $result=Invoke-CimMethod -InputObject $method -MethodName WmiSetBrightness -Arguments @{Timeout=[uint32]4;Brightness=[byte]$Target}
+ $result=Invoke-CimMethod -InputObject $method -MethodName WmiSetBrightness -Arguments @{Timeout=[uint32]$Duration;Brightness=[byte]$Target}
  if($null -ne $result.ReturnValue -and $result.ReturnValue -ne 0){throw 'Driver rejected brightness transition'}
  $last=$Start
  $direction=[Math]::Sign($Target-$Start)
- $deadline=[DateTime]::UtcNow.AddSeconds(8)
+ $deadline=[DateTime]::UtcNow.AddSeconds($Duration+4)
  do {
   Start-Sleep -Milliseconds 35
   $read=Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness | Where-Object InstanceName -eq $id

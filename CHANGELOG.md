@@ -1,3 +1,14 @@
+# 0.2.0
+
+- Ignore unreliable or disagreeing light readings; require two cycles for large brightness changes and ignore small differences.
+- Add calm, balanced, and fast transitions, requested through the Windows display driver.
+- Add a draggable custom curve editor with add/remove points and reset.
+- Save an explicitly confirmed manual brightness preference into the custom curve, with monotonic validation.
+- Add separate optional AC and battery brightness limits.
+- Pause camera/control work while locked or sleeping, and resume only if automatic mode was previously active.
+- Add a rolling one-minute light, target, and actual-brightness chart, plus clearer diagnostic explanations.
+- Package a standalone Windows portable app and per-user installer, desktop/Start menu shortcuts, and uninstaller.
+
 # 0.1.0
 
 First public release of Auto Brightness.

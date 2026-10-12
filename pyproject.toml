@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "room-brightness"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local camera-based automatic brightness control for Windows laptops"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -24,6 +24,7 @@ classifiers = [
 room-brightness = "room_brightness.__main__:main"
 
 [project.optional-dependencies]
+windows-build = ["pyinstaller==6.19.0"]
 dev = ["build>=1.2,<2", "ruff==0.17.0"]
 
 [tool.setuptools.packages.find]

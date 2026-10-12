@@ -58,7 +58,7 @@ class NativeEngineTests(unittest.TestCase):
             patch.object(
                 ui,
                 "smooth_to",
-                side_effect=lambda start, target, cancel, progress: (
+                side_effect=lambda start, target, cancel, progress, **kwargs: (
                     progress(control(target)) or target,
                     False,
                 ),
@@ -123,3 +123,40 @@ class NativeEngineTests(unittest.TestCase):
             self.assertFalse(load_settings(directory)["startup"])
         finally:
             scheduler.destroy()
+
+    def test_lock_cancels_work_and_unlock_resumes_only_after_all_reasons_clear(self):
+        self.engine.running = True
+        self.engine.session_pause("lock", True)
+        self.assertFalse(self.engine.running)
+        self.assertTrue(self.engine.cancel.is_set())
+        self.assertTrue(self.engine.resume_pending)
+        self.engine.session_pause("sleep", True)
+        with patch.object(self.engine, "verify") as verify:
+            self.engine.session_pause("lock", False)
+            verify.assert_not_called()
+            self.engine.session_pause("sleep", False)
+            verify.assert_called_once_with(start_after=True)
+        self.assertFalse(self.engine.resume_pending)
+
+    def test_stop_cancels_unlock_resume(self):
+        self.engine.running = True
+        self.engine.session_pause("lock", True)
+        self.engine.stop()
+        with patch.object(self.engine, "verify") as verify:
+            self.engine.session_pause("lock", False)
+            verify.assert_not_called()
+
+    def test_power_profile_reconfigures_production_controller(self):
+        from room_brightness.adaptive import AdaptiveController
+
+        self.engine.running = True
+        self.engine.controller = AdaptiveController(mapping="image")
+        self.engine.preferences["power_profiles"] = True
+        self.engine.preferences["ac_limits"] = [0, 100]
+        with patch(
+            "room_brightness.qt_engine.ctypes.windll.kernel32.GetSystemPowerStatus",
+            side_effect=lambda pointer: setattr(pointer._obj, "ac", 1) or 1,
+        ):
+            self.engine.begin_pair_cycle()
+        self.assertEqual((self.engine.controller.low, self.engine.controller.high), (0, 100))
+        self.assertTrue(self.engine.controller.options["stability_guard"])

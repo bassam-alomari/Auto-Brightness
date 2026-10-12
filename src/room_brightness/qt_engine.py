@@ -2,6 +2,9 @@
 
 import queue
 import threading
+import time
+import ctypes
+from collections import deque
 
 from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QMessageBox
@@ -83,6 +86,11 @@ class Engine(ui.App):
         self.view = "home"
         self.tray_icon = None
         self.last_meter = None
+        self.history = deque(maxlen=180)
+        self.pause_reasons = set()
+        self.resume_pending = False
+        self.diagnostic = ""
+        self.power_mode = "ac"
         self.preview_enabled = False
         self.error_details = ""
         self.devices = []
@@ -122,6 +130,15 @@ class Engine(ui.App):
                 self.set_status("error", "startup_error")
             self.discovery_timer = scheduler.after(100, self.refresh_cameras)
 
+    def work(self, function, done, operation):
+        def completed(result):
+            done(result)
+            if operation == "test" and hasattr(self, "resume_original"):
+                self.original = self.resume_original
+                del self.resume_original
+
+        return super().work(function, completed, operation)
+
     def persist(self):
         from .settings import save_settings
 
@@ -151,7 +168,111 @@ class Engine(ui.App):
         pass
 
     def update_meter(self):
-        pass
+        if self.last_meter:
+            self.history.append(
+                (
+                    time.monotonic(),
+                    self.last_meter["level"],
+                    self.last_meter["target"],
+                    self.last_meter["current"],
+                )
+            )
+            self.diagnostic = self.last_meter.get("reason", "image_curve")
+
+    def begin_pair_cycle(self):
+        if self.pause_reasons or not self.running:
+            return
+        power = ui.Power()
+        try:
+            ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(power))
+            self.power_mode = "ac" if power.ac == 1 else "battery"
+        except AttributeError:
+            self.power_mode = "ac"
+        if self.controller:
+            self.controller.options = dict(self.preferences)
+            if self.preferences["power_profiles"]:
+                self.controller.low, self.controller.high = self.preferences[
+                    self.power_mode + "_limits"
+                ]
+            else:
+                self.controller.low, self.controller.high = self.low.get(), self.high.get()
+        super().begin_pair_cycle()
+
+    def session_pause(self, reason, paused):
+        if paused:
+            self.pause_reasons.add(reason)
+            self.resume_pending = self.resume_pending or self.running
+            self.running = False
+            self.cancel.set()
+            for key in ("timer", "screen_timer"):
+                timer = getattr(self, key, None)
+                if timer is not None:
+                    self.root.after_cancel(timer)
+                    setattr(self, key, None)
+            self.diagnostic = "paused"
+            self.status_title.set(self.t("stopped"))
+            self.status.set(
+                "الكاميرا متوقفة أثناء القفل أو السكون"
+                if self.language == "ar"
+                else "Camera paused while locked or sleeping"
+            )
+        else:
+            self.pause_reasons.discard(reason)
+            self.try_resume()
+            if not self.pause_reasons and not self.resume_pending and not self.running:
+                self.finish_stop()
+
+    def try_resume(self):
+        if self.pause_reasons or not self.resume_pending:
+            return
+        if self.busy:
+            self.root.after(200, self.try_resume)
+            return
+        self.resume_pending = False
+        self.cancel.clear()
+        # Re-verify the display and camera after resume; preserve the initial restore value.
+        old = self.original
+        self.verify(start_after=True)
+        self.resume_original = old
+
+    def start(self):
+        if not self.pause_reasons:
+            super().start()
+
+    def stop(self):
+        self.resume_pending = False
+        super().stop()
+
+    def finish_stop(self):
+        if self.pause_reasons or self.resume_pending:
+            return
+        super().finish_stop()
+
+    def learn_current(self):
+        from .comfort import learned_points
+
+        if (
+            not self.last_meter
+            or self.last_meter.get("quality", 0) < 0.35
+            or time.monotonic() - (self.history[-1][0] if self.history else 0) > 60
+        ):
+            raise ValueError("Take a fresh light reading first.")
+        if self.busy:
+            raise ValueError("Wait for the current operation to finish.")
+        points = learned_points(
+            self.preferences["custom_points"],
+            self.last_meter["level"],
+            int(self.display_value.get()),
+        )
+        self.preferences["custom_points"] = points
+        self.preferences["brightness_curve"] = "custom"
+        if self.controller:
+            self.controller.image_curve = "custom"
+        self.persist()
+
+    def handle_error(self, operation, error):
+        self.diagnostic = "camera_error" if "camera" in str(error).lower() else "display_error"
+        super().handle_error(operation, error)
 
     def update_readings(self):
         pass

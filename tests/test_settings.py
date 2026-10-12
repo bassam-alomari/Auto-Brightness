@@ -170,18 +170,24 @@ class NewDefaultsAndDialectTests(unittest.TestCase):
                 b = {key for _, key, _, _ in formatter.parse(arabic) if key}
                 self.assertEqual(a, b, (style, english))
 
+
 class ArabicDirectionTests(unittest.TestCase):
     def test_windows_is_directionally_isolated_in_arabic_label(self):
         from room_brightness.i18n import text
-        value=text("ar","startup")
+
+        value = text("ar", "startup")
         self.assertTrue(value.startswith("\u200f"))
-        self.assertIn("ويندوز",value)
+        self.assertIn("ويندوز", value)
         self.assertTrue(value.endswith("ويندوز"))
+
 
 class ConsistentArabicDigitsTests(unittest.TestCase):
     def test_arabic_reading_uses_one_digit_set(self):
         from room_brightness.i18n import literal
-        for style in ("msa","jo","eg","gulf"):
-            value=literal("ar","Image: {level}/255 · Stability: {quality}%\nTarget: {target}%",dialect=style).format(level=29,quality=100,target=55)
-            self.assertIn("29/255",value)
+
+        for style in ("msa", "jo", "eg", "gulf"):
+            value = literal(
+                "ar", "Image: {level}/255 · Stability: {quality}%\nTarget: {target}%", dialect=style
+            ).format(level=29, quality=100, target=55)
+            self.assertIn("29/255", value)
             self.assertFalse(any(c in value for c in "٠١٢٣٤٥٦٧٨٩"))

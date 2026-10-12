@@ -66,7 +66,9 @@ def sample(index: int, cancel: threading.Event, timeout: float = 15, preview=Fal
     if cancel.is_set():
         raise RuntimeError("Stopped.")
     process = subprocess.Popen(
-        [sys.executable, "-m", "room_brightness", "--meter", str(index)]
+        [sys.executable]
+        + ([] if getattr(sys, "frozen", False) else ["-m", "room_brightness"])
+        + ["--meter", str(index)]
         + (["--preview"] if preview else []),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

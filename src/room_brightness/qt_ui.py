@@ -42,6 +42,8 @@ from PySide6.QtWidgets import (
 )
 
 from .adaptive import image_target, CURVES
+from .comfort_ui import CurveDialog, History, DIAGNOSTICS
+from .comfort import target as custom_target
 from .camera import sample
 from . import __version__
 from .i18n import LANGUAGES, literal
@@ -430,10 +432,15 @@ class Curve(QWidget):
         for y in (25, 60, 95, 130):
             painter.drawLine(15, y, self.width() - 15, y)
         path = QPainterPath()
+        span = max(80, e.preferences["custom_points"][-1][0])
         for i in range(101):
             value = image_target(
-                i * 0.8, e.low.get(), e.high.get(), e.preferences["brightness_curve"]
+                i * span / 100, e.low.get(), e.high.get(), e.preferences["brightness_curve"]
             )
+            if e.preferences["brightness_curve"] == "custom":
+                value = custom_target(
+                    i * span / 100, e.low.get(), e.high.get(), e.preferences["custom_points"]
+                )
             x, y = 15 + (self.width() - 30) * i / 100, 135 - value
             if i:
                 path.lineTo(x, y)
@@ -484,6 +491,14 @@ class Window(QWidget):
         self.resize(1000, 830)
         self.setMinimumSize(800, 640)
         self.build()
+        self.session_registered = False
+        try:
+            api = ctypes.windll.wtsapi32.WTSRegisterSessionNotification
+            api.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+            api.restype = ctypes.c_int
+            self.session_registered = bool(api(ctypes.c_void_p(int(self.winId())), 0))
+        except (AttributeError, OSError):
+            pass
         self.pump = QTimer(self)
         self.pump.timeout.connect(self.sync)
         self.glass_save = QTimer(self)
@@ -759,6 +774,16 @@ class Window(QWidget):
         note.setObjectName("muted")
         right.addWidget(note)
         right.addWidget(self.label(e.t("privacy_help")))
+        right.addWidget(self.label(self.tr("Last minute", "آخر دقيقة"), True))
+        self.history_chart = History(self)
+        right.addWidget(self.history_chart)
+        self.diagnostics_label = self.label("")
+        right.addWidget(self.diagnostics_label)
+        learn = QPushButton(
+            self.tr("Save this brightness for this light", "حفظ هذا السطوع للإضاءة الحالية")
+        )
+        learn.clicked.connect(self.learn_preference)
+        right.addWidget(learn)
         right.addStretch()
 
     def settings(self, panels):
@@ -887,11 +912,139 @@ class Window(QWidget):
             self.label(
                 self.tr(
                     "Selected curve maps the image average to brightness within your limits.",
-                    "كيرف الصورة: ١٢ أو أقل ← الحد الأدنى؛ ٢١ ← ٥٥٪؛ ٢٨ ← ٧٠٪؛ ٣٠ أو أكثر ← الحد الأعلى (لغاية ١٠٠٪).",
+                    "المنحنى المحدد يربط متوسط الصورة بالسطوع ضمن الحدود التي تختارها.",
                 )
             )
         )
+        left.addStretch()
+        self.comfort_settings(right)
+        for spin in self.findChildren(QSpinBox):
+            spin.setAlignment(
+                Qt.AlignmentFlag.AlignAbsolute
+                | (
+                    Qt.AlignmentFlag.AlignRight
+                    if e.language == "ar"
+                    else Qt.AlignmentFlag.AlignLeft
+                )
+            )
         right.addStretch()
+
+    def option_change(self, key, value):
+        self.engine.preferences[key] = value
+        self.engine.persist()
+
+    def comfort_settings(self, layout):
+        e = self.engine
+        layout.addWidget(self.label(self.tr("Comfort and stability", "الراحة والثبات"), True))
+        guard = ToggleSwitch(
+            self.tr(
+                "Ignore brief changes and prevent flicker", "تجاهل التغيّرات العابرة ومنع التذبذب"
+            )
+        )
+        guard.setChecked(e.preferences["stability_guard"])
+        guard.toggled.connect(lambda value: self.option_change("stability_guard", value))
+        layout.addWidget(guard)
+        layout.addWidget(self.label(self.tr("Minimum change (%)", "أصغر تغيير (%)")))
+        band = NoWheelSpinBox()
+        band.setAlignment(
+            Qt.AlignmentFlag.AlignAbsolute
+            | (Qt.AlignmentFlag.AlignRight if e.language == "ar" else Qt.AlignmentFlag.AlignLeft)
+        )
+        band.setRange(1, 10)
+        band.setValue(e.preferences["deadband"])
+        band.valueChanged.connect(lambda value: self.option_change("deadband", value))
+        layout.addWidget(band)
+        layout.addWidget(self.label(self.tr("Transition speed", "سرعة الانتقال")))
+        layout.addWidget(
+            self.combo(
+                [
+                    self.tr("Calm (8 s)", "هادئ (8 ثوانٍ)"),
+                    self.tr("Balanced (4 s)", "متوازن (4 ثوانٍ)"),
+                    self.tr("Fast (1 s)", "سريع (ثانية)"),
+                ],
+                ("calm", "balanced", "fast").index(e.preferences["transition_speed"]),
+                lambda i: self.option_change("transition_speed", ("calm", "balanced", "fast")[i]),
+            )
+        )
+        edit = QPushButton(self.tr("Edit your curve", "تعديل منحناك"))
+        edit.clicked.connect(self.edit_curve)
+        layout.addWidget(edit)
+        self.locked.append(edit)
+        profile = ToggleSwitch(
+            self.tr("Separate AC and battery limits", "حدود منفصلة للشاحن والبطارية")
+        )
+        profile.setChecked(e.preferences["power_profiles"])
+        profile.toggled.connect(lambda value: self.option_change("power_profiles", value))
+        layout.addWidget(profile)
+        for mode, en, ar in (
+            ("ac", "On AC power", "عند توصيل الشاحن"),
+            ("battery", "On battery", "على البطارية"),
+        ):
+            layout.addWidget(self.label(self.tr(en, ar)))
+            for index, label in (
+                (0, self.tr("Minimum", "الحد الأدنى")),
+                (1, self.tr("Maximum", "الحد الأعلى")),
+            ):
+                layout.addWidget(self.label(label))
+                spin = NoWheelSpinBox()
+                spin.setAlignment(
+                    Qt.AlignmentFlag.AlignAbsolute
+                    | (
+                        Qt.AlignmentFlag.AlignRight
+                        if e.language == "ar"
+                        else Qt.AlignmentFlag.AlignLeft
+                    )
+                )
+                spin.setRange(0, 100)
+                spin.setSuffix("%")
+                spin.setValue(e.preferences[mode + "_limits"][index])
+                spin.valueChanged.connect(
+                    lambda value, m=mode, i=index: self.profile_change(m, i, value)
+                )
+                layout.addWidget(spin)
+
+    def profile_change(self, mode, index, value):
+        limits = self.engine.preferences[mode + "_limits"][:]
+        limits[index] = value
+        if limits[0] >= limits[1]:
+            QMessageBox.information(
+                self,
+                self.tr("Limits", "الحدود"),
+                self.tr(
+                    "Minimum must be below maximum.", "يجب أن يكون الحد الأدنى أقل من الحد الأعلى."
+                ),
+            )
+            self.build()
+            return
+        self.option_change(mode + "_limits", limits)
+
+    def edit_curve(self):
+        if not self.engine.running and not self.engine.busy:
+            self.curve_dialog = CurveDialog(self)
+            self.curve_dialog.open()
+
+    def learn_preference(self):
+        try:
+            self.engine.learn_current()
+            QMessageBox.information(
+                self,
+                self.tr("Saved", "تم الحفظ"),
+                self.tr("Preference saved to your curve.", "تم حفظ التفضيل في منحناك."),
+            )
+        except ValueError as exc:
+            QMessageBox.information(
+                self,
+                self.tr("Preference", "التفضيل"),
+                self.tr(
+                    str(exc),
+                    {
+                        "Take a fresh light reading first.": "خذ قراءة جديدة للضوء أولًا.",
+                        "Wait for the current operation to finish.": "انتظر انتهاء العملية الحالية.",
+                        "Choose a reading between the curve endpoints.": "اختر قراءة بين طرفي المنحنى.",
+                        "This preference would reverse the curve. Adjust neighboring points first.": "هذا التفضيل يعكس اتجاه المنحنى. عدّل النقاط المجاورة أولًا.",
+                    }.get(str(exc), str(exc)),
+                ),
+            )
 
     def update_values(self):
         e = self.engine
@@ -981,6 +1134,19 @@ class Window(QWidget):
         if (self.engine.language, self.engine.theme, self.page) != self.signature:
             self.build()
         self.update_values()
+        if self.page == "home":
+            self.history_chart.update()
+            reason = self.engine.diagnostic
+            if self.engine.controller and time.monotonic() < self.engine.controller.hold_until:
+                message = self.tr(
+                    "Manual brightness takes priority for three minutes",
+                    "السطوع اليدوي له الأولوية لمدة ثلاث دقائق",
+                )
+            else:
+                message = self.tr(
+                    *DIAGNOSTICS.get(reason, ("Ready for a light reading", "جاهز لقراءة الضوء"))
+                )
+            self.diagnostics_label.setText(message)
 
     def glass_alpha(self, clear, tinted):
         return round(clear + (tinted - clear) * self.engine.preferences["glass_tint"] / 100)
@@ -1153,7 +1319,7 @@ class Window(QWidget):
 
     def check_now(self):
         e = self.engine
-        if e.busy or not e.selected_device():
+        if e.pause_reasons or e.busy or not e.selected_device():
             return
         if e.running:
             if e.timer is not None:
@@ -1164,17 +1330,34 @@ class Window(QWidget):
             e.cancel.clear()
             index = e.selected_device()["index"]
 
-            def done(m):
+            def done(result):
+                m, current = result
+                e.display_value.set(str(current))
                 e.last_meter = dict(
                     level=m["level"],
                     quality=m["confidence"],
-                    target=e.display_value.get(),
+                    target=custom_target(
+                        m["level"], e.low.get(), e.high.get(), e.preferences["custom_points"]
+                    )
+                    if e.preferences["brightness_curve"] == "custom"
+                    else image_target(
+                        m["level"], e.low.get(), e.high.get(), e.preferences["brightness_curve"]
+                    ),
+                    current=current,
                     exposure=m.get("exposure"),
                     exposure_corrected=m.get("exposure_corrected"),
                     preview=m.get("preview"),
                 )
 
-            e.work(lambda: sample(index, e.cancel, preview=e.preview_enabled), done, "measure")
+                e.update_meter()
+
+            from .brightness import brightness
+
+            e.work(
+                lambda: (sample(index, e.cancel, preview=e.preview_enabled), brightness()),
+                done,
+                "measure",
+            )
 
     def update_tray_menu(self):
         if hasattr(self, "tray_menu"):
@@ -1216,9 +1399,31 @@ class Window(QWidget):
             self.hide_to_tray()
         super().changeEvent(event)
 
+    def nativeEvent(self, event_type, message):
+        from ctypes import wintypes
+
+        try:
+            msg = wintypes.MSG.from_address(int(message))
+            if msg.message == 0x2B1 and msg.wParam in (7, 8):
+                self.engine.session_pause("lock", msg.wParam == 7)
+            elif msg.message == 0x218:
+                if msg.wParam == 4:
+                    self.engine.session_pause("sleep", True)
+                elif msg.wParam in (6, 7, 18):
+                    self.engine.session_pause("sleep", False)
+        except (TypeError, ValueError):
+            pass
+        return super().nativeEvent(event_type, message)
+
     def exit_app(self):
         if not self.closing:
             self.closing = True
+            self.engine.resume_pending = False
+            if self.session_registered:
+                api = ctypes.windll.wtsapi32.WTSUnRegisterSessionNotification
+                api.argtypes = [ctypes.c_void_p]
+                api(ctypes.c_void_p(int(self.winId())))
+                self.session_registered = False
             self.setEnabled(False)
             if self.glass_save.isActive():
                 self.glass_save.stop()

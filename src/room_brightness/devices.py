@@ -165,7 +165,9 @@ def native_devices():
 
 def list_devices():
     result = subprocess.run(
-        [sys.executable, "-m", "room_brightness", "--list-cameras"],
+        [sys.executable]
+        + ([] if getattr(sys, "frozen", False) else ["-m", "room_brightness"])
+        + ["--list-cameras"],
         capture_output=True,
         text=True,
         encoding="utf-8",

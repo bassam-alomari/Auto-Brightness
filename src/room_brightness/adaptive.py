@@ -63,6 +63,8 @@ class AdaptiveController:
     mapping: str = "relative"
     image_curve: str = "custom"
     protect_dim: bool = True
+    options: dict | None = None
+    stability: object = None
     reason: str = ""
     reference_signature: list = field(default_factory=list)
     absolute_bias: int = 0
@@ -97,6 +99,8 @@ class AdaptiveController:
             self.confirmations = 0
             self.scores.clear()
             self.reference_signature = []
+            if self.stability is not None:
+                self.stability.pending, self.stability.count = None, 0
             return True
         self.expected = current
         return False
@@ -116,9 +120,28 @@ class AdaptiveController:
                 or measurement.get("confidence", 0) < 0.25
             ):
                 self.reason = "uncertain"
+                if self.stability is not None:
+                    self.stability.pending, self.stability.count = None, 0
                 return current
             self.reason = "image_curve"
-            return image_target(level, self.low, self.high, self.image_curve)
+            wanted = image_target(level, self.low, self.high, self.image_curve)
+            if self.options is not None:
+                from .comfort import Stability, target
+
+                if self.image_curve == "custom":
+                    wanted = target(level, self.low, self.high, self.options["custom_points"])
+                if self.stability is None:
+                    self.stability = Stability()
+                wanted = self.stability.decide(
+                    measurement,
+                    wanted,
+                    current,
+                    self.options["stability_guard"],
+                    self.options["deadband"],
+                    (self.low, self.high),
+                )
+                self.reason = self.stability.reason or "image_curve"
+            return wanted
         score = measurement["score"]
         if not math.isfinite(score) or measurement["confidence"] + 1e-6 < 0.25:
             self.reason = "uncertain"

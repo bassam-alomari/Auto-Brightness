@@ -9,6 +9,13 @@ from .i18n import LANGUAGES
 from .themes import THEME_NAMES
 
 DEFAULTS = {
+    "stability_guard": True,
+    "deadband": 3,
+    "transition_speed": "balanced",
+    "custom_points": [[12, 0], [15, 50], [20, 70], [25, 90], [27, 100]],
+    "power_profiles": False,
+    "ac_limits": [10, 100],
+    "battery_limits": [10, 80],
     "language": "auto",
     "theme": "auto",
     "glass_tint": 50,
@@ -87,6 +94,26 @@ def validate(raw):
     result = DEFAULTS.copy()
     if not isinstance(raw, dict):
         return result
+    from .comfort import valid_points
+
+    for key in ("stability_guard", "power_profiles"):
+        if type(raw.get(key)) is bool:
+            result[key] = raw[key]
+    if type(raw.get("deadband")) is int and 1 <= raw["deadband"] <= 10:
+        result["deadband"] = raw["deadband"]
+    if raw.get("transition_speed") in ("calm", "balanced", "fast"):
+        result["transition_speed"] = raw["transition_speed"]
+    if valid_points(raw.get("custom_points")):
+        result["custom_points"] = [list(point) for point in raw["custom_points"]]
+    for key in ("ac_limits", "battery_limits"):
+        limits = raw.get(key)
+        if (
+            isinstance(limits, list)
+            and len(limits) == 2
+            and all(type(v) is int for v in limits)
+            and 0 <= limits[0] < limits[1] <= 100
+        ):
+            result[key] = limits[:]
     from .adaptive import CURVES
 
     if raw.get("brightness_curve") in CURVES:

@@ -38,3 +38,23 @@ The active Qt interface supports English, Arabic, Spanish, French, German, Portu
 Install with `python -m pip install -e ".[dev]"`, then run `python -m unittest discover -s tests` on Windows and `ruff check src tests`. Hardware tests require a real compatible display and camera; mocked regression tests do not establish ambient-light accuracy or visual fade quality. See `docs/HARDWARE_TESTING.md`.
 
 The internal Python package, settings directory and startup registry identity retain their original names for upgrade compatibility. Personal preferences are outside the source checkout. MIT licensed; see `LICENSE` and `THIRD_PARTY_NOTICES.md`.
+
+
+## Comfort controls in 0.2.0
+
+Stability protection is enabled by default: unreliable readings or pairs differing by more than 6 camera units are held, changes of 15 brightness points or more need two consecutive cycles, and changes smaller than 3 points are ignored. The threshold and protection can be changed in Settings. Configured endpoints remain reachable. This adds deliberate confirmation latency.
+
+Choose Calm (8 s), Balanced (4 s), or Fast (1 s) transitions. These durations are driver requests; some displays apply brightness immediately.
+
+Edit your curve by dragging its points; the first endpoint stays at image 12 and the final point stays at 100%. Add/remove intermediate points or reset the original curve. Stop automatic mode before editing. To learn a preference, set brightness manually, take a fresh reading using Check now, then click Save this brightness for this light. Preferences that reverse the curve are rejected.
+
+Optional power profiles have separate brightness limits for AC and battery. When enabled, these override the general limits for automatic control. The chart keeps only the last minute of readings in memory; the light trace uses its own camera-unit scale, while target and screen use 0–100%. Diagnostics explain confirmation, rejected readings, manual holds, and camera/display errors.
+
+The camera is cancelled on Windows lock/suspend and restarted after unlock/resume only if automatic mode was already active. Stop cancels pending automatic resume. Session notifications require a supported Windows desktop session.
+
+## Standalone installation
+
+Download `AutoBrightness-0.2.0-Setup.exe` from the release assets, close any running copy using Exit, and run the installer. It installs under your current account without Python or administrator privileges and creates Desktop and Start menu shortcuts. Remove it through Windows Installed apps; personal preferences are preserved. A portable ZIP is also available: extract it and open `AutoBrightness.exe`.
+
+For developers: `python -m pip install -e ".[windows-build]"` then `python packaging/build_windows.py` on Windows with Python 3.12 x64 builds both packages. The Windows installer workflow also builds them when run manually or on a version tag.
+

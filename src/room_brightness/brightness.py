@@ -61,12 +61,14 @@ def verify_control(control: Callable = brightness, original: int | None = None) 
     return original
 
 
-def smooth_to(start, target, cancel, progress):
+def smooth_to(start, target, cancel, progress, duration=4):
     """One cancellable CIM process for the entire verified one-percent ramp."""
     import queue
     import threading
     import time
 
+    if duration not in (1, 4, 8):
+        raise ValueError("Invalid transition duration.")
     if not 0 <= start <= 100 or not 0 <= target <= 100:
         raise ValueError("Brightness outside 0–100%.")
     process = subprocess.Popen(
@@ -81,6 +83,8 @@ def smooth_to(start, target, cancel, progress):
             str(start),
             "-Target",
             str(target),
+            "-Duration",
+            str(duration),
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

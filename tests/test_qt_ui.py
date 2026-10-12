@@ -83,6 +83,7 @@ class QtInterfaceTests(unittest.TestCase):
         )
         with (
             patch.object(qt_ui, "sample", return_value=reading),
+            patch("room_brightness.brightness.brightness", return_value=50),
             patch("room_brightness.ui.set_checked") as setter,
         ):
             self.window.check_now()
@@ -283,15 +284,25 @@ class QtInterfaceTests(unittest.TestCase):
     def test_numeric_settings_are_right_aligned_in_arabic(self):
         from PySide6.QtCore import Qt
         from room_brightness.qt_ui import NoWheelSpinBox
-        self.window.page="settings"
+
+        self.window.page = "settings"
         self.window.change_language("ar")
         for spin in self.window.findChildren(NoWheelSpinBox):
             self.assertTrue(spin.alignment() & Qt.AlignmentFlag.AlignRight)
             self.assertTrue(spin.alignment() & Qt.AlignmentFlag.AlignAbsolute)
 
     def test_new_brand_icon_is_used_by_window_and_tray(self):
-        icon=self.window.windowIcon()
+        icon = self.window.windowIcon()
         self.assertFalse(icon.isNull())
         self.assertFalse(self.window.tray.icon().isNull())
-        for size in (16,32,64,256):
-            self.assertFalse(icon.pixmap(size,size).isNull())
+        for size in (16, 32, 64, 256):
+            self.assertFalse(icon.pixmap(size, size).isNull())
+
+    def test_locked_session_does_not_allow_explicit_camera_check(self):
+        from room_brightness import qt_ui
+
+        self.engine.session_pause("lock", True)
+        with patch.object(qt_ui, "sample") as sample:
+            self.window.check_now()
+            sample.assert_not_called()
+        self.assertFalse(self.engine.busy)

@@ -791,7 +791,18 @@ class App:
                                 self.controller.committed(value)
                                 self.events.put(("progress", value, None))
 
-                            actual, manual = smooth_to(current, wanted, self.cancel, progress)
+                            if "transition_speed" in self.preferences:
+                                actual, manual = smooth_to(
+                                    current,
+                                    wanted,
+                                    self.cancel,
+                                    progress,
+                                    duration={"calm": 8, "balanced": 4, "fast": 1}[
+                                        self.preferences["transition_speed"]
+                                    ],
+                                )
+                            else:
+                                actual, manual = smooth_to(current, wanted, self.cancel, progress)
                             if manual:
                                 self.controller.observe(actual, time.monotonic())
                                 self.original = actual

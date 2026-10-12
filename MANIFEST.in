@@ -10,3 +10,5 @@ include THIRD_PARTY_NOTICES.md
 recursive-include src/room_brightness *.json *.svg
 
 recursive-include src/room_brightness *.ico *.png
+
+recursive-include packaging *.py *.cs *.ps1

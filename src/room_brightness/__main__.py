@@ -20,6 +20,7 @@ def main():
     )
     parser.add_argument("--list-cameras", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--preview", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--self-test", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if os.name != "nt":
         parser.exit(1, "Auto Brightness requires Windows 10 or Windows 11.\n")
@@ -45,6 +46,12 @@ def main():
             parser.exit(1, str(exc) + "\n")
         return
 
+    if getattr(sys, "frozen", False):
+        import ctypes
+
+        handle = ctypes.windll.kernel32.GetConsoleWindow()
+        if handle:
+            ctypes.windll.user32.ShowWindow(ctypes.c_void_p(handle), 0)
     import msvcrt
     from .paths import DATA_DIR
     from .i18n import text
@@ -57,6 +64,17 @@ def main():
     except ImportError as exc:
         parser.exit(1, "Run Setup.cmd to install the updated interface. " + str(exc) + "\n")
     _app = QApplication.instance() or QApplication(sys.argv[:1])
+    if args.self_test:
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as folder:
+            root = Scheduler()
+            root._brightness_backend = Engine(root, discover=False, directory=Path(folder))
+            root.after(500, root._brightness_backend.close)
+            run_desktop(root)
+        print("Desktop smoke check passed: " + __version__)
+        return
     language = system_language()
     try:
         DATA_DIR.mkdir(parents=True, exist_ok=True)

@@ -9,6 +9,8 @@ NAME = "RoomBrightness"
 
 
 def command():
+    if getattr(sys, "frozen", False):
+        return subprocess.list2cmdline([sys.executable, "--autostart"])
     interpreter = Path(sys.executable)
     windowed = interpreter.with_name("pythonw.exe")
     return subprocess.list2cmdline(
