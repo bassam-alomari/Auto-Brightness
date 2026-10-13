@@ -44,6 +44,7 @@ from PySide6.QtWidgets import (
 from .adaptive import image_target, CURVES
 from .comfort_ui import CurveDialog, History, DIAGNOSTICS
 from .comfort import target as custom_target
+from .extras_ui import ExtrasMixin
 from .camera import sample
 from . import __version__
 from .i18n import LANGUAGES, literal
@@ -468,7 +469,7 @@ class Curve(QWidget):
             painter.drawText(rect, flags | align | direction, caption)
 
 
-class Window(QWidget):
+class Window(ExtrasMixin, QWidget):
     def __init__(self, root, engine):
         super().__init__()
         self.root, self.engine = root, engine
@@ -481,6 +482,11 @@ class Window(QWidget):
         self.page = "home"
         self.signature = None
         self.closing = False
+        self.update_pending = False
+        self.pending_update = None
+        self.update_message = ""
+        self.shortcut_keys = []
+        self.shortcut_status = ""
         self._pumping = False
         self.tray = QSystemTrayIcon(self)
         icon = self.make_icon()
@@ -505,6 +511,7 @@ class Window(QWidget):
         self.glass_save.setSingleShot(True)
         self.glass_save.timeout.connect(self.engine.persist)
         self.pump.start(100)
+        self.configure_shortcuts()
 
     def tr(self, english, arabic):
         return literal(
@@ -693,6 +700,7 @@ class Window(QWidget):
         self.update_values()
         self.update()
         self.update_tray_menu()
+        self.configure_shortcuts()
 
     def home(self, panels):
         e = self.engine
@@ -738,6 +746,21 @@ class Window(QWidget):
         left.addWidget(self.manual_button)
         left.addWidget(self.label(e.t("manual_tip")))
         left.addStretch()
+        right.addWidget(self.label(self.tr("Display", "الشاشة"), True))
+        self.displays_combo = RoundedCombo()
+        self.displays_combo.currentIndexChanged.connect(self.choose_display)
+        right.addWidget(self.displays_combo)
+        self.displays_refresh = QPushButton(self.tr("Refresh displays", "تحديث الشاشات"))
+        self.displays_refresh.clicked.connect(e.refresh_displays)
+        right.addWidget(self.displays_refresh)
+        right.addWidget(
+            self.label(
+                self.tr(
+                    "External displays require DDC/CI support. Each display keeps its own settings.",
+                    "تحتاج الشاشات الخارجية إلى دعم DDC/CI. تُحفظ إعدادات مستقلة لكل شاشة.",
+                )
+            )
+        )
         right.addWidget(self.label(e.t("camera"), True))
         self.cameras = RoundedCombo()
         self.cameras.currentIndexChanged.connect(self.choose_camera)
@@ -916,6 +939,7 @@ class Window(QWidget):
                 )
             )
         )
+        self.extras_settings(left)
         left.addStretch()
         self.comfort_settings(right)
         for spin in self.findChildren(QSpinBox):
@@ -1123,7 +1147,9 @@ class Window(QWidget):
                         self.preview.setProperty("source", png)
         else:
             for widget in self.locked:
-                widget.setEnabled(not e.running and not e.busy)
+                widget.setEnabled(
+                    not e.running and not e.busy and not e.resume_pending and not e.pause_reasons
+                )
 
     def sync(self):
         if not self.root.winfo_exists():
@@ -1134,7 +1160,42 @@ class Window(QWidget):
         if (self.engine.language, self.engine.theme, self.page) != self.signature:
             self.build()
         self.update_values()
+        self.maybe_wizard()
+        if self.page == "settings":
+            self.update_label.setText(self.update_message)
+            self.update_link.setEnabled(bool(self.pending_update))
         if self.page == "home":
+            labels = [
+                self.tr("Built-in display", "الشاشة الداخلية")
+                if d["id"] == "internal"
+                else d["name"]
+                for d in self.engine.displays
+            ]
+            target = self.engine.preferences["display_target"]
+            if target not in [d["id"] for d in self.engine.displays]:
+                labels.append(
+                    self.tr(
+                        "Saved display unavailable — refresh",
+                        "الشاشة المحفوظة غير متاحة — حدّث القائمة",
+                    )
+                )
+            if labels != [
+                self.displays_combo.itemText(i) for i in range(self.displays_combo.count())
+            ]:
+                self.displays_combo.blockSignals(True)
+                self.displays_combo.clear()
+                self.displays_combo.addItems(labels)
+                self.displays_combo.setCurrentIndex(
+                    next(
+                        (i for i, d in enumerate(self.engine.displays) if d["id"] == target),
+                        len(labels) - 1,
+                    )
+                )
+                self.displays_combo.blockSignals(False)
+            self.displays_combo.setEnabled(
+                not self.engine.running and not self.engine.busy and not self.engine.resume_pending
+            )
+            self.displays_refresh.setEnabled(not self.engine.running and not self.engine.busy)
             self.history_chart.update()
             reason = self.engine.diagnostic
             if self.engine.controller and time.monotonic() < self.engine.controller.hold_until:
@@ -1346,7 +1407,7 @@ class Window(QWidget):
                     current=current,
                     exposure=m.get("exposure"),
                     exposure_corrected=m.get("exposure_corrected"),
-                    preview=m.get("preview"),
+                    preview=m.get("preview") if e.preview_enabled else None,
                 )
 
                 e.update_meter()
@@ -1354,7 +1415,15 @@ class Window(QWidget):
             from .brightness import brightness
 
             e.work(
-                lambda: (sample(index, e.cancel, preview=e.preview_enabled), brightness()),
+                lambda: (
+                    sample(
+                        index,
+                        e.cancel,
+                        preview=e.preview_enabled,
+                        region=e.preferences["meter_region"],
+                    ),
+                    brightness(),
+                ),
                 done,
                 "measure",
             )
@@ -1399,11 +1468,74 @@ class Window(QWidget):
             self.hide_to_tray()
         super().changeEvent(event)
 
+    def choose_display(self, index):
+        if not 0 <= index < len(self.engine.displays):
+            return
+        try:
+            self.engine.select_display(self.engine.displays[index]["id"])
+            self.build()
+        except ValueError as error:
+            self.message_error(error)
+
+    def shortcut_toggle(self):
+        if self.engine.running or self.engine.resume_pending:
+            self.engine.stop()
+        elif not self.engine.busy and not self.engine.pause_reasons:
+            self.engine.start()
+
+    def shortcuts_change(self, value):
+        self.option_change("shortcuts_enabled", value)
+        self.configure_shortcuts()
+
+    def configure_shortcuts(self):
+        desired = self.engine.preferences["shortcuts_enabled"]
+        if (desired and len(self.shortcut_keys) == 2) or (not desired and not self.shortcut_keys):
+            return
+        try:
+            user = ctypes.windll.user32
+            user.RegisterHotKey.argtypes = [
+                ctypes.c_void_p,
+                ctypes.c_int,
+                ctypes.c_uint,
+                ctypes.c_uint,
+            ]
+            user.RegisterHotKey.restype = ctypes.c_int
+            user.UnregisterHotKey.argtypes = [ctypes.c_void_p, ctypes.c_int]
+            for key in self.shortcut_keys:
+                user.UnregisterHotKey(ctypes.c_void_p(int(self.winId())), key)
+            self.shortcut_keys = []
+            if not self.engine.preferences["shortcuts_enabled"]:
+                return
+            for key, vk in ((0xAB01, 0x42), (0xAB02, 0x4F)):
+                if not user.RegisterHotKey(ctypes.c_void_p(int(self.winId())), key, 0x4003, vk):
+                    for active in self.shortcut_keys:
+                        user.UnregisterHotKey(ctypes.c_void_p(int(self.winId())), active)
+                    self.shortcut_keys = []
+                    self.shortcut_status = self.tr(
+                        "Shortcut already used by another app.", "الاختصار مستخدم في تطبيق آخر."
+                    )
+                    self.engine.preferences["shortcuts_enabled"] = False
+                    self.engine.persist()
+                    QMessageBox.information(
+                        self,
+                        self.tr("Keyboard shortcuts", "اختصارات لوحة المفاتيح"),
+                        self.shortcut_status,
+                    )
+                    return
+                self.shortcut_keys.append(key)
+        except (AttributeError, OSError):
+            self.shortcut_keys = []
+
     def nativeEvent(self, event_type, message):
         from ctypes import wintypes
 
         try:
             msg = wintypes.MSG.from_address(int(message))
+            if msg.message == 0x312:
+                if msg.wParam == 0xAB01:
+                    self.shortcut_toggle()
+                elif msg.wParam == 0xAB02:
+                    self.restore_window()
             if msg.message == 0x2B1 and msg.wParam in (7, 8):
                 self.engine.session_pause("lock", msg.wParam == 7)
             elif msg.message == 0x218:
@@ -1419,6 +1551,9 @@ class Window(QWidget):
         if not self.closing:
             self.closing = True
             self.engine.resume_pending = False
+            for key in self.shortcut_keys:
+                ctypes.windll.user32.UnregisterHotKey(ctypes.c_void_p(int(self.winId())), key)
+            self.shortcut_keys = []
             if self.session_registered:
                 api = ctypes.windll.wtsapi32.WTSUnRegisterSessionNotification
                 api.argtypes = [ctypes.c_void_p]

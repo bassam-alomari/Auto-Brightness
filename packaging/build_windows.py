@@ -93,7 +93,7 @@ for source in (Path(sys.base_prefix) / "LICENSE.txt", Path(sys.base_prefix) / "L
     if source.is_file():
         licenses.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, licenses / "Python-LICENSE.txt")
-archive = out / "AutoBrightness-0.2.0-portable.zip"
+archive = out / "AutoBrightness-0.3.0-portable.zip"
 with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:
     for file in app.rglob("*"):
         if file.is_file():
@@ -104,7 +104,7 @@ subprocess.run(
         str(csc),
         "/nologo",
         "/target:winexe",
-        f"/out:{out / 'AutoBrightness-0.2.0-Setup.exe'}",
+        f"/out:{out / 'AutoBrightness-0.3.0-Setup.exe'}",
         f"/win32icon:{project / 'src/room_brightness/app.ico'}",
         f"/resource:{archive},payload.zip",
         "/reference:System.Windows.Forms.dll",

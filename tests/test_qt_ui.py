@@ -306,3 +306,33 @@ class QtInterfaceTests(unittest.TestCase):
             self.window.check_now()
             sample.assert_not_called()
         self.assertFalse(self.engine.busy)
+
+    def test_setup_wizard_cannot_finish_until_display_test_passes(self):
+        from room_brightness.extras_ui import SetupWizard
+
+        wizard = SetupWizard(self.window)
+        wizard.pages.setCurrentIndex(2)
+        wizard.sync()
+        self.assertFalse(wizard.finish.isEnabled())
+        self.engine.verified = True
+        wizard.sync()
+        self.assertTrue(wizard.finish.isEnabled())
+        wizard.low.setValue(0)
+        wizard.high.setValue(100)
+        wizard.complete()
+        self.assertTrue(self.engine.preferences["onboarding_done"])
+        self.assertEqual((self.engine.low.get(), self.engine.high.get()), (0, 100))
+        wizard.timer.stop()
+        wizard.deleteLater()
+
+    def test_region_preview_restores_prior_privacy_setting(self):
+        from room_brightness.extras_ui import RegionDialog
+
+        dialog = RegionDialog(self.window)
+        with patch.object(self.window, "check_now") as check:
+            dialog.capture()
+            check.assert_called_once()
+        self.assertTrue(self.engine.preview_enabled)
+        dialog.reject()
+        self.assertFalse(self.engine.preview_enabled)
+        dialog.deleteLater()

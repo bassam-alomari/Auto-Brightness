@@ -722,6 +722,7 @@ class App:
         power = Power()
         ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(power))
         seconds = self.interval_ac.get() if power.ac == 1 else self.interval_battery.get()
+        seconds = getattr(self, "cycle_seconds", seconds)
         self.pair_first = None
         self.pair_deadline = time.monotonic() + seconds
         self.timer = self.root.after(round(seconds * 500), self.tick)
@@ -759,7 +760,12 @@ class App:
                 raise RuntimeError(
                     "Selected camera disconnected or reordered. Refresh cameras and try again."
                 )
-            reading = sample(device["index"], self.cancel, preview=self.preview_enabled)
+            reading = sample(
+                device["index"],
+                self.cancel,
+                preview=self.preview_enabled,
+                region=self.preferences.get("meter_region"),
+            )
             if self.cancel.is_set():
                 return None
             if getattr(self.root, "qt_native", False):

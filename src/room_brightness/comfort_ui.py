@@ -96,6 +96,7 @@ class CurveEditor(QWidget):
 class CurveDialog(QDialog):
     def __init__(self, window):
         super().__init__(window)
+        self.setLayoutDirection(window.layoutDirection())
         self.window = window
         self.setStyleSheet("QDialog { background: #20242b; }")
         self.setWindowTitle(window.tr("Edit your curve", "تعديل منحناك"))
@@ -131,6 +132,7 @@ class CurveDialog(QDialog):
         if not valid_points(self.editor.points):
             return
         e = self.window.engine
+        e.remember_curve()
         e.preferences["custom_points"] = [point[:] for point in self.editor.points]
         e.preferences["brightness_curve"] = "custom"
         e.persist()
@@ -186,6 +188,10 @@ class History(QWidget):
 
 
 DIAGNOSTICS = {
+    "camera_retry": (
+        "Camera busy or disconnected; retrying quietly",
+        "الكاميرا مشغولة أو مفصولة؛ تُعاد المحاولة تلقائيًا",
+    ),
     "image_curve": ("Following the selected curve", "اتباع المنحنى المحدد"),
     "uncertain": ("Reading is unreliable; brightness held", "القراءة غير موثوقة؛ تم تثبيت السطوع"),
     "deadband": ("Small difference; brightness held", "فرق بسيط؛ تم تثبيت السطوع"),

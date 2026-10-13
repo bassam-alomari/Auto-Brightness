@@ -26,6 +26,9 @@ class NativeEngineTests(unittest.TestCase):
         self.engine.choose_device(self.device)
 
     def tearDown(self):
+        from room_brightness import monitors
+
+        monitors.select("internal")
         self.scheduler.destroy()
         self.app.processEvents()
         self.folder.cleanup()
@@ -160,3 +163,49 @@ class NativeEngineTests(unittest.TestCase):
             self.engine.begin_pair_cycle()
         self.assertEqual((self.engine.controller.low, self.engine.controller.high), (0, 100))
         self.assertTrue(self.engine.controller.options["stability_guard"])
+
+    def test_camera_busy_retry_keeps_brightness_and_stop_cancels_retry(self):
+        from room_brightness.adaptive import AdaptiveController
+
+        self.engine.running = True
+        self.engine.controller = AdaptiveController(mapping="image")
+        self.engine.original = 40
+        self.engine.restore.set(False)
+        with patch("room_brightness.ui.set_checked") as write:
+            self.engine.handle_error("control", "Camera unavailable. Close video apps.")
+            self.assertTrue(self.engine.running)
+            self.assertEqual(self.engine.diagnostic, "camera_retry")
+            self.assertIsNotNone(self.engine.timer)
+            self.assertEqual(self.engine.original, 40)
+            self.engine.stop()
+            self.assertIsNone(self.engine.timer)
+            write.assert_not_called()
+
+    def test_profile_apply_is_persistent_and_blocked_during_control(self):
+        from room_brightness.settings import load_settings
+
+        self.engine.running = True
+        with self.assertRaises(ValueError):
+            self.engine.apply_profile("night")
+        self.engine.running = False
+        self.engine.apply_profile("night")
+        self.assertEqual((self.engine.low.get(), self.engine.high.get()), (0, 50))
+        self.assertEqual(load_settings(self.engine.directory)["brightness_curve"], "night")
+
+    def test_each_display_restores_its_own_settings(self):
+        self.engine.select_display("external")
+        self.engine.low.set(0)
+        self.engine.high.set(100)
+        self.engine.persist()
+        self.engine.select_display("internal")
+        self.assertEqual((self.engine.low.get(), self.engine.high.get()), (10, 80))
+        self.engine.select_display("external")
+        self.assertEqual((self.engine.low.get(), self.engine.high.get()), (0, 100))
+
+    def test_undo_restores_previous_saved_curve(self):
+        original = [point[:] for point in self.engine.preferences["custom_points"]]
+        self.engine.remember_curve()
+        self.engine.preferences["custom_points"][1][1] = 55
+        self.engine.persist()
+        self.engine.undo_curve()
+        self.assertEqual(self.engine.preferences["custom_points"], original)

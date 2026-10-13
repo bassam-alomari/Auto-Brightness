@@ -1,3 +1,16 @@
+# 0.3.0
+
+- Add first-run setup with camera/display selection, comfort limits, and a reversible display-control test.
+- Add camera metering-region selection with an in-memory preview and region-aware child sampling.
+- Keep brightness during camera contention/disconnection and retry quietly with capped backoff; Stop cancels retries.
+- Export/import/reset portable preferences without device identities, startup registration, or local paths.
+- Keep up to 20 saved curve revisions and restore the last revision with Undo.
+- Add optional global start/stop and open-window keyboard shortcuts with conflict detection and cleanup.
+- Add Work, Gaming, Night, and named custom usage profiles.
+- Check published GitHub releases on demand and open the validated download page; no automatic installation.
+- Support capability-gated DDC/CI external monitors, verified writes, and independent settings per selected display.
+- Optionally reduce sampling frequency during stable light/brightness, with configurable AC/battery maximum intervals.
+
 # 0.2.0
 
 - Ignore unreliable or disagreeing light readings; require two cycles for large brightness changes and ignore small differences.

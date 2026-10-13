@@ -10,6 +10,10 @@ from .paths import RESOURCE_DIR
 def brightness(value: int | None = None) -> int:
     if os.name != "nt":
         raise RuntimeError("Brightness control requires Windows.")
+    from . import monitors
+
+    if monitors.selected_target != "internal":
+        return monitors.brightness(value)
     args = [
         "powershell.exe",
         "-NoProfile",
@@ -41,6 +45,13 @@ def brightness(value: int | None = None) -> int:
 def set_checked(value: int, control: Callable = brightness) -> int:
     actual = control(value)
     if actual != value:
+        from . import monitors
+
+        if (
+            monitors.selected_target != "internal"
+            and abs(actual - value) <= monitors.quantization_error
+        ):
+            return actual
         raise RuntimeError("Brightness readback does not match the requested value.")
     return actual
 
@@ -62,7 +73,11 @@ def verify_control(control: Callable = brightness, original: int | None = None) 
 
 
 def smooth_to(start, target, cancel, progress, duration=4):
-    """One cancellable CIM process for the entire verified one-percent ramp."""
+    """Cancellable verified transitions for the selected internal or external display."""
+    from . import monitors
+
+    if monitors.selected_target != "internal":
+        return monitors.smooth(start, target, cancel, progress, duration)
     import queue
     import threading
     import time

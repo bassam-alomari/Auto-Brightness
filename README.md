@@ -54,7 +54,27 @@ The camera is cancelled on Windows lock/suspend and restarted after unlock/resum
 
 ## Standalone installation
 
-Download `AutoBrightness-0.2.0-Setup.exe` from the release assets, close any running copy using Exit, and run the installer. It installs under your current account without Python or administrator privileges and creates Desktop and Start menu shortcuts. Remove it through Windows Installed apps; personal preferences are preserved. A portable ZIP is also available: extract it and open `AutoBrightness.exe`.
+Download `AutoBrightness-0.3.0-Setup.exe` from the release assets, close any running copy using Exit, and run the installer. It installs under your current account without Python or administrator privileges and creates Desktop and Start menu shortcuts. Remove it through Windows Installed apps; personal preferences are preserved. A portable ZIP is also available: extract it and open `AutoBrightness.exe`.
 
 For developers: `python -m pip install -e ".[windows-build]"` then `python packaging/build_windows.py` on Windows with Python 3.12 x64 builds both packages. The Windows installer workflow also builds them when run manually or on a version tag.
+
+
+
+## Setup and tools in 0.3.0
+
+The first-run wizard lets you choose a camera and display, set comfort limits, and explicitly test display control. The test briefly adjusts brightness and restores it. Close the wizard to postpone it, or reopen it from Settings → First setup. Camera capture begins only through Start or Capture preview/Check now.
+
+Choose a metering region in Settings: capture an in-memory full-frame preview and drag a rectangle. Only that region is analyzed; Whole image restores the default. This can reduce interference from a window or face, but remains a camera estimate rather than a lux measurement.
+
+A busy or disconnected camera holds the current brightness and retries after 5, 10, 20, 40, then at most 60 seconds. Camera identity is preserved. Stop cancels the retry; display-control errors remain visible instead of being silently retried.
+
+Export/Import settings uses a versioned JSON file, with a confirmation preview on import. Exports omit camera/display identity, paths, startup registration, and preview frames. Reset restores portable preferences without changing startup/device choices. Undo saved curve change restores up to 20 previous curve point sets, including learned preferences.
+
+Work, Gaming, and Night are built-in usage profiles; save your own named profiles. Stop automatic mode before importing, switching profiles, editing the region, or selecting another display. Optional global shortcuts are Ctrl+Alt+B (start/stop) and Ctrl+Alt+O (open window). If another app owns a shortcut, the option is disabled and explains the conflict.
+
+Check for updates contacts the GitHub releases API only when clicked. It ignores draft/prerelease releases and compares numeric version components. Open release page navigates to the official repository release; downloading and installing stay under your control.
+
+External monitors are listed only if Windows reports brightness capability through DDC/CI and a valid range can be read. Enable DDC/CI in the monitor menu if needed. One selected display is controlled at a time; each stores its own curve, comfort range, and sampling settings. Disconnecting a selected display causes a visible error rather than switching to another display. External transitions use cancellable verified steps and may differ from the internal display fade. Quantized hardware brightness values are respected. Physical external-monitor validation is still required on your equipment. See [Microsoft monitor configuration documentation](https://learn.microsoft.com/en-us/windows/win32/api/highlevelmonitorconfigurationapi/nf-highlevelmonitorconfigurationapi-getmonitorbrightness).
+
+Power saving is optional and initially disabled. After four stable light/brightness cycles, sampling gradually slows, never past the configured AC/battery maximum. A changed or unreliable reading restores the base interval. Each cycle still takes two readings at its midpoint and endpoint. Longer intervals delay detection of new light changes; the effective maximum cannot be shorter than the base interval.
 

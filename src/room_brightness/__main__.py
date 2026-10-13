@@ -21,6 +21,7 @@ def main():
     parser.add_argument("--list-cameras", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--preview", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--self-test", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--region", default="0,0,1,1", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if os.name != "nt":
         parser.exit(1, "Auto Brightness requires Windows 10 or Windows 11.\n")
@@ -40,7 +41,9 @@ def main():
         from .camera import camera_sample
 
         try:
-            reading = camera_sample(index, preview=args.preview)
+            reading = camera_sample(
+                index, preview=args.preview, region=[float(v) for v in args.region.split(",")]
+            )
             print(json.dumps(reading) if args.meter is not None else reading["level"])
         except Exception as exc:
             parser.exit(1, str(exc) + "\n")

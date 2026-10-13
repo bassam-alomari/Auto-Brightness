@@ -9,7 +9,12 @@ import threading
 import time
 
 
-def camera_sample(index: int, preview=False) -> dict:
+def camera_sample(index: int, preview=False, region=None) -> dict:
+    from .extras import valid_region
+
+    region = [0, 0, 1, 1] if region is None else list(region)
+    if not valid_region(region):
+        raise ValueError("Invalid camera metering region.")
     import cv2
     from .metering import analyze_frame, combine_frames
     from .vision import scene_features, vision_score
@@ -31,6 +36,10 @@ def camera_sample(index: int, preview=False) -> dict:
             if time.monotonic() - started >= 1.5:
                 if frame.shape[0] > 240 or frame.shape[1] > 320:
                     frame = cv2.resize(frame, (320, 240), interpolation=cv2.INTER_AREA)
+                full_frame = frame
+                from .extras import crop_frame
+
+                frame = crop_frame(frame, region)
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 exposure = cap.get(cv2.CAP_PROP_EXPOSURE)
                 features = scene_features(frame)
@@ -53,7 +62,7 @@ def camera_sample(index: int, preview=False) -> dict:
         gain = cap.get(cv2.CAP_PROP_GAIN)
         reading["gain"] = gain if math.isfinite(gain) and gain >= 0 else None
         if preview:
-            thumb = cv2.resize(frame, (240, 180), interpolation=cv2.INTER_AREA)
+            thumb = cv2.resize(full_frame, (240, 180), interpolation=cv2.INTER_AREA)
             encoded, png = cv2.imencode(".png", thumb)
             if encoded:
                 reading["preview"] = base64.b64encode(png).decode("ascii")
@@ -62,14 +71,17 @@ def camera_sample(index: int, preview=False) -> dict:
         cap.release()
 
 
-def sample(index: int, cancel: threading.Event, timeout: float = 15, preview=False) -> dict:
+def sample(
+    index: int, cancel: threading.Event, timeout: float = 15, preview=False, region=None
+) -> dict:
     if cancel.is_set():
         raise RuntimeError("Stopped.")
     process = subprocess.Popen(
         [sys.executable]
         + ([] if getattr(sys, "frozen", False) else ["-m", "room_brightness"])
         + ["--meter", str(index)]
-        + (["--preview"] if preview else []),
+        + (["--preview"] if preview else [])
+        + (["--region", ",".join(str(v) for v in region)] if region is not None else []),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,

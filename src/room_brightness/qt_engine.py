@@ -13,6 +13,8 @@ from . import ui, startup
 from .paths import DATA_DIR
 from .settings import load_settings, resolve_language, resolve_theme
 from .widgets import PALETTES
+from .extras import SamplingBudget, PROFILE_KEYS
+import copy
 
 
 class Value:
@@ -91,6 +93,13 @@ class Engine(ui.App):
         self.resume_pending = False
         self.diagnostic = ""
         self.power_mode = "ac"
+        self.sampling_budget = SamplingBudget()
+        self.retry_attempt = 0
+        self.displays = [{"id": "internal", "name": "Built-in display"}]
+        self.wizard_eligible = discover
+        from . import monitors
+
+        monitors.select(self.preferences["display_target"])
         self.preview_enabled = False
         self.error_details = ""
         self.devices = []
@@ -178,6 +187,8 @@ class Engine(ui.App):
                 )
             )
             self.diagnostic = self.last_meter.get("reason", "image_curve")
+            self.sampling_budget.observe(self.last_meter)
+            self.retry_attempt = 0
 
     def begin_pair_cycle(self):
         if self.pause_reasons or not self.running:
@@ -196,6 +207,12 @@ class Engine(ui.App):
                 ]
             else:
                 self.controller.low, self.controller.high = self.low.get(), self.high.get()
+        base = self.interval_ac.get() if self.power_mode == "ac" else self.interval_battery.get()
+        self.cycle_seconds = self.sampling_budget.interval(
+            base,
+            self.preferences["max_interval_" + self.power_mode],
+            self.preferences["adaptive_sampling"],
+        )
         super().begin_pair_cycle()
 
     def session_pause(self, reason, paused):
@@ -264,13 +281,143 @@ class Engine(ui.App):
             self.last_meter["level"],
             int(self.display_value.get()),
         )
+        self.remember_curve()
         self.preferences["custom_points"] = points
         self.preferences["brightness_curve"] = "custom"
         if self.controller:
             self.controller.image_curve = "custom"
         self.persist()
 
+    def refresh_displays(self):
+        if self.busy or self.running:
+            return
+        from .monitors import list_displays
+
+        self.work(list_displays, lambda displays: setattr(self, "displays", displays), "displays")
+
+    def select_display(self, identity):
+        if self.running or self.busy or self.resume_pending:
+            raise ValueError("Stop automatic mode before changing settings.")
+        from . import monitors
+
+        previous = self.preferences["display_target"]
+        self.preferences["display_profiles"][previous] = {
+            key: copy.deepcopy(self.preferences[key]) for key in PROFILE_KEYS
+        }
+        settings = copy.deepcopy(self.preferences)
+        settings["display_target"] = identity
+        settings.update(settings["display_profiles"].get(identity, {}))
+        self.apply_preferences(settings)
+        monitors.select(identity)
+        self.display_value.set("—")
+
+    def remember_curve(self):
+        history = self.preferences["curve_history"]
+        points = copy.deepcopy(self.preferences["custom_points"])
+        if not history or history[-1] != points:
+            history.append(points)
+            self.preferences["curve_history"] = history[-20:]
+
+    def undo_curve(self):
+        if self.running or self.busy:
+            raise ValueError("Stop automatic mode before changing settings.")
+        if not self.preferences["curve_history"]:
+            raise ValueError("No saved curve changes to undo.")
+        self.preferences["custom_points"] = self.preferences["curve_history"].pop()
+        self.preferences["brightness_curve"] = "custom"
+        self.persist()
+
+    def apply_preferences(self, settings):
+        if self.running or self.busy or self.resume_pending:
+            raise ValueError("Stop automatic mode before changing settings.")
+        from .settings import validate
+
+        if settings.get("custom_points") != self.preferences["custom_points"]:
+            self.remember_curve()
+        history = copy.deepcopy(self.preferences["curve_history"])
+        self.preferences = validate(settings)
+        self.preferences["curve_history"] = history
+        for key, var in (
+            ("low", self.low),
+            ("high", self.high),
+            ("interval_ac", self.interval_ac),
+            ("interval_battery", self.interval_battery),
+            ("restore", self.restore),
+        ):
+            var.set(self.preferences[key])
+        self.language = resolve_language(self.preferences["language"])
+        self.theme = resolve_theme(self.preferences["theme"])
+        self.palette = PALETTES[self.theme]
+        self.controller = None
+        self.verified = False
+        self.last_meter = None
+        self.history.clear()
+        self.sampling_budget.reset()
+        self.persist()
+
+    def apply_profile(self, name):
+        from .extras import profile_settings
+
+        settings = copy.deepcopy(self.preferences)
+        settings.update(profile_settings(settings, name))
+        self.apply_preferences(settings)
+
+    def save_profile(self, name):
+        name = name.strip()
+        if not name or len(name) > 40 or name in ("work", "gaming", "night"):
+            raise ValueError("Choose a different profile name (1–40 characters).")
+        if name not in self.preferences["profiles"] and len(self.preferences["profiles"]) >= 20:
+            raise ValueError("Maximum of 20 profiles reached.")
+        self.preferences["profiles"][name] = {
+            key: copy.deepcopy(self.preferences[key]) for key in PROFILE_KEYS
+        }
+        self.persist()
+
+    def retry_camera(self):
+        self.timer = None
+        if not self.running or self.pause_reasons:
+            return
+        if self.busy:
+            self.timer = self.root.after(500, self.retry_camera)
+            return
+
+        def done(devices):
+            if not self.running:
+                return
+            chosen = next((device for device in devices if device["id"] == self.camera_id), None)
+            if chosen:
+                self.devices = devices
+                self.choose_device(chosen)
+                self.cancel.clear()
+                self.begin_pair_cycle()
+            else:
+                self.schedule_retry()
+
+        self.work(ui.list_devices, done, "retry_devices")
+
+    def schedule_retry(self):
+        self.retry_attempt += 1
+        delay = min(60, 5 * 2 ** min(self.retry_attempt - 1, 4))
+        if self.timer is not None:
+            self.root.after_cancel(self.timer)
+        self.timer = self.root.after(delay * 1000, self.retry_camera)
+        self.diagnostic = "camera_retry"
+        self.status_title.set(self.t("watching"))
+        self.status.set(
+            "الكاميرا مشغولة أو غير متاحة. سيُعاد الفحص بعد " + str(delay) + " ثانية."
+            if self.language == "ar"
+            else f"Camera busy or unavailable. Retrying in {delay} seconds."
+        )
+
     def handle_error(self, operation, error):
+        if self.running and (
+            operation == "retry_devices"
+            or (operation in ("control", "measure") and "camera" in str(error).lower())
+        ):
+            self.error_details = str(error)
+            self.cancel.clear()
+            self.schedule_retry()
+            return
         self.diagnostic = "camera_error" if "camera" in str(error).lower() else "display_error"
         super().handle_error(operation, error)
 

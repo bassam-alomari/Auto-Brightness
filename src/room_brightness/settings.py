@@ -1,5 +1,6 @@
 """Validated, atomic per-user preferences, including legacy calibration migration."""
 
+import copy
 import ctypes
 import json
 import math
@@ -9,6 +10,16 @@ from .i18n import LANGUAGES
 from .themes import THEME_NAMES
 
 DEFAULTS = {
+    "onboarding_done": False,
+    "meter_region": [0, 0, 1, 1],
+    "adaptive_sampling": False,
+    "max_interval_ac": 30,
+    "max_interval_battery": 60,
+    "shortcuts_enabled": False,
+    "profiles": {},
+    "curve_history": [],
+    "display_target": "internal",
+    "display_profiles": {},
     "stability_guard": True,
     "deadband": 3,
     "transition_speed": "balanced",
@@ -91,10 +102,39 @@ def resolve_theme(preference):
 
 
 def validate(raw):
-    result = DEFAULTS.copy()
+    result = copy.deepcopy(DEFAULTS)
     if not isinstance(raw, dict):
         return result
+    from .extras import valid_region, PROFILE_KEYS
+
+    for key in ("onboarding_done", "adaptive_sampling", "shortcuts_enabled"):
+        if type(raw.get(key)) is bool:
+            result[key] = raw[key]
+    for key in ("max_interval_ac", "max_interval_battery"):
+        if type(raw.get(key)) is int and 5 <= raw[key] <= 600:
+            result[key] = raw[key]
+    if valid_region(raw.get("meter_region")):
+        result["meter_region"] = raw["meter_region"][:]
+    if isinstance(raw.get("display_target"), str) and len(raw["display_target"]) <= 1024:
+        result["display_target"] = raw["display_target"]
+    for key in ("profiles", "display_profiles"):
+        profiles = raw.get(key, {})
+        if isinstance(profiles, dict):
+            for name, values in list(profiles.items())[:20]:
+                if (
+                    isinstance(name, str)
+                    and 0 < len(name) <= (1024 if key == "display_profiles" else 40)
+                    and isinstance(values, dict)
+                ):
+                    clean = validate({k: v for k, v in values.items() if k in PROFILE_KEYS})
+                    result[key][name] = {k: clean[k] for k in PROFILE_KEYS if k in values}
     from .comfort import valid_points
+
+    history = raw.get("curve_history", [])
+    if isinstance(history, list):
+        result["curve_history"] = [
+            copy.deepcopy(points) for points in history[-20:] if valid_points(points)
+        ]
 
     for key in ("stability_guard", "power_profiles"):
         if type(raw.get(key)) is bool:
@@ -178,7 +218,7 @@ def load_settings(directory: Path):
                 dict(low=old.get("low"), high=old.get("high"), camera_index=old.get("camera", 0))
             )
         except (OSError, ValueError, AttributeError):
-            return DEFAULTS.copy()
+            return copy.deepcopy(DEFAULTS)
 
 
 def save_settings(directory: Path, values):
