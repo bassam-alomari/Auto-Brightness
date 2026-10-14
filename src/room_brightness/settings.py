@@ -4,7 +4,6 @@ import copy
 import ctypes
 import json
 import math
-import os
 from pathlib import Path
 from .i18n import LANGUAGES
 from .themes import THEME_NAMES
@@ -210,8 +209,16 @@ def validate(raw):
 
 def load_settings(directory: Path):
     try:
-        return validate(json.loads((directory / "settings.json").read_text(encoding="utf-8")))
+        raw = json.loads((directory / "settings.json").read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise ValueError("Settings must be an object.")
+        return validate(raw)
     except (OSError, ValueError):
+        from .recovery import recover_settings
+
+        recovered = recover_settings(directory)
+        if recovered is not None:
+            return recovered
         try:
             old = json.loads((directory / "calibration.json").read_text(encoding="utf-8"))
             return validate(
@@ -222,10 +229,18 @@ def load_settings(directory: Path):
 
 
 def save_settings(directory: Path, values):
+    from .recovery import snapshot, write_atomic
+
     directory.mkdir(parents=True, exist_ok=True)
     destination = directory / "settings.json"
-    temporary = directory / "settings.json.tmp"
-    temporary.write_text(
-        json.dumps(validate(values), ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    os.replace(temporary, destination)
+    cleaned = validate(values)
+    if destination.exists():
+        try:
+            previous = json.loads(destination.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            previous = None
+        if isinstance(previous, dict):
+            if validate(previous) == cleaned:
+                return
+            snapshot(directory, previous, cleaned)
+    write_atomic(destination, json.dumps(cleaned, ensure_ascii=False, indent=2))

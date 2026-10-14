@@ -191,7 +191,15 @@
     "@Import these settings?": "¿Importar estos ajustes?",
     "@Restore default preferences?": "¿Restaurar ajustes predeterminados?",
     "@Intervals": "Intervalos",
-    "@Settings": "Ajustes"
+    "@Settings": "Ajustes",
+    "@Diagnostic report": "Informe de diagnóstico",
+    "@Restore a backup": "Restaurar copia de seguridad",
+    "@Save report": "Guardar informe",
+    "@Restore selected backup": "Restaurar copia seleccionada",
+    "@No backups available yet.": "Aún no hay copias de seguridad.",
+    "@Restore this backup? Current settings will also be backed up.": "¿Restaurar esta copia? También se guardarán los ajustes actuales.",
+    "@Review before saving. No images, device names, paths, or raw error messages are included. Nothing is sent automatically.": "Revisa antes de guardar. No incluye imágenes, nombres de dispositivos, rutas ni errores sin filtrar. No se envía nada automáticamente.",
+    "@The last 10 settings changes are backed up locally. Restore keeps current camera, display, and sign-in startup choices.": "Se guardan localmente los últimos 10 cambios. Restaurar conserva la cámara, pantalla e inicio de sesión actuales."
   },
   "fr": {
     "language": "Langue",
@@ -385,7 +393,15 @@
     "@Import these settings?": "Importer ces réglages ?",
     "@Restore default preferences?": "Restaurer les réglages par défaut ?",
     "@Intervals": "Intervalles",
-    "@Settings": "Réglages"
+    "@Settings": "Réglages",
+    "@Diagnostic report": "Rapport de diagnostic",
+    "@Restore a backup": "Restaurer une sauvegarde",
+    "@Save report": "Enregistrer le rapport",
+    "@Restore selected backup": "Restaurer la sauvegarde sélectionnée",
+    "@No backups available yet.": "Aucune sauvegarde disponible.",
+    "@Restore this backup? Current settings will also be backed up.": "Restaurer cette sauvegarde ? Les réglages actuels seront aussi sauvegardés.",
+    "@Review before saving. No images, device names, paths, or raw error messages are included. Nothing is sent automatically.": "Vérifiez avant d’enregistrer. Aucune image, nom d’appareil, chemin ou erreur brute. Aucun envoi automatique.",
+    "@The last 10 settings changes are backed up locally. Restore keeps current camera, display, and sign-in startup choices.": "Les 10 dernières modifications sont sauvegardées localement. La restauration conserve caméra, écran et démarrage actuels."
   },
   "de": {
     "language": "Sprache",
@@ -579,7 +595,15 @@
     "@Import these settings?": "Diese Einstellungen importieren?",
     "@Restore default preferences?": "Standardeinstellungen wiederherstellen?",
     "@Intervals": "Intervalle",
-    "@Settings": "Einstellungen"
+    "@Settings": "Einstellungen",
+    "@Diagnostic report": "Diagnosebericht",
+    "@Restore a backup": "Sicherung wiederherstellen",
+    "@Save report": "Bericht speichern",
+    "@Restore selected backup": "Ausgewählte Sicherung wiederherstellen",
+    "@No backups available yet.": "Noch keine Sicherungen vorhanden.",
+    "@Restore this backup? Current settings will also be backed up.": "Diese Sicherung wiederherstellen? Aktuelle Einstellungen werden ebenfalls gesichert.",
+    "@Review before saving. No images, device names, paths, or raw error messages are included. Nothing is sent automatically.": "Vor dem Speichern prüfen. Keine Bilder, Gerätenamen, Pfade oder rohen Fehlermeldungen. Nichts wird automatisch gesendet.",
+    "@The last 10 settings changes are backed up locally. Restore keeps current camera, display, and sign-in startup choices.": "Die letzten 10 Änderungen werden lokal gesichert. Kamera, Bildschirm und Autostart bleiben beim Wiederherstellen erhalten."
   },
   "pt": {
     "language": "Idioma",
@@ -773,7 +797,15 @@
     "@Import these settings?": "Importar estas configurações?",
     "@Restore default preferences?": "Restaurar configurações padrão?",
     "@Intervals": "Intervalos",
-    "@Settings": "Configurações"
+    "@Settings": "Configurações",
+    "@Diagnostic report": "Relatório de diagnóstico",
+    "@Restore a backup": "Restaurar backup",
+    "@Save report": "Salvar relatório",
+    "@Restore selected backup": "Restaurar backup selecionado",
+    "@No backups available yet.": "Ainda não há backups.",
+    "@Restore this backup? Current settings will also be backed up.": "Restaurar este backup? As configurações atuais também serão salvas.",
+    "@Review before saving. No images, device names, paths, or raw error messages are included. Nothing is sent automatically.": "Revise antes de salvar. Sem imagens, nomes de dispositivos, caminhos ou erros brutos. Nada é enviado automaticamente.",
+    "@The last 10 settings changes are backed up locally. Restore keeps current camera, display, and sign-in startup choices.": "As últimas 10 alterações são salvas localmente. A restauração mantém câmera, tela e início automático atuais."
   },
   "zh": {
     "language": "语言",
@@ -967,7 +999,15 @@
     "@Import these settings?": "导入这些设置？",
     "@Restore default preferences?": "恢复默认设置？",
     "@Intervals": "间隔",
-    "@Settings": "设置"
+    "@Settings": "设置",
+    "@Diagnostic report": "诊断报告",
+    "@Restore a backup": "恢复备份",
+    "@Save report": "保存报告",
+    "@Restore selected backup": "恢复所选备份",
+    "@No backups available yet.": "暂无备份。",
+    "@Restore this backup? Current settings will also be backed up.": "恢复此备份？当前设置也将备份。",
+    "@Review before saving. No images, device names, paths, or raw error messages are included. Nothing is sent automatically.": "保存前请检查。不含图片、设备名称、路径或原始错误信息，不会自动发送任何内容。",
+    "@The last 10 settings changes are backed up locally. Restore keeps current camera, display, and sign-in startup choices.": "本地保留最近10次设置修改。恢复时保留当前摄像头、显示器和登录启动选择。"
   },
   "hi": {
     "language": "भाषा",
@@ -1161,6 +1201,14 @@
     "@Import these settings?": "ये सेटिंग आयात करें?",
     "@Restore default preferences?": "डिफ़ॉल्ट सेटिंग बहाल करें?",
     "@Intervals": "अंतराल",
-    "@Settings": "सेटिंग"
+    "@Settings": "सेटिंग",
+    "@Diagnostic report": "निदान रिपोर्ट",
+    "@Restore a backup": "बैकअप बहाल करें",
+    "@Save report": "रिपोर्ट सहेजें",
+    "@Restore selected backup": "चुना हुआ बैकअप बहाल करें",
+    "@No backups available yet.": "अभी कोई बैकअप नहीं है।",
+    "@Restore this backup? Current settings will also be backed up.": "यह बैकअप बहाल करें? वर्तमान सेटिंग का भी बैकअप बनेगा।",
+    "@Review before saving. No images, device names, paths, or raw error messages are included. Nothing is sent automatically.": "सहेजने से पहले देखें। तस्वीरें, उपकरण नाम, पथ और मूल त्रुटि संदेश शामिल नहीं हैं। कुछ भी स्वतः नहीं भेजा जाता।",
+    "@The last 10 settings changes are backed up locally. Restore keeps current camera, display, and sign-in startup choices.": "पिछले 10 बदलावों का स्थानीय बैकअप रहता है। बहाली वर्तमान कैमरा, स्क्रीन और लॉगिन स्टार्टअप विकल्प रखती है।"
   }
 }

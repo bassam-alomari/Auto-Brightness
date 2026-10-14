@@ -1,3 +1,11 @@
+# 0.3.1
+
+- Keep the last ten changed settings snapshots locally and recover the newest valid snapshot when current settings are missing or corrupt.
+- Add preview and explicit restoration of backups, preserving camera/display identity and sign-in startup choices.
+- Add a reviewable diagnostic JSON report with bounded recent readings and categorized errors; omit images, device names, paths, raw errors, and automatic uploads.
+- Stop retrying camera permission failures as if they were temporary camera contention.
+- Apply imported/profile settings to runtime only after disk persistence succeeds, and clean up interrupted atomic writes.
+
 # 0.3.0
 
 - Add first-run setup with camera/display selection, comfort limits, and a reversible display-control test.

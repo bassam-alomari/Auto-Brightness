@@ -24,6 +24,7 @@ class RegionPicker(QWidget):
     def __init__(self, window):
         super().__init__()
         self.window = window
+        self.engine = window.engine
         self.region = window.engine.preferences["meter_region"][:]
         self.anchor = None
         self.setMinimumSize(400, 300)
@@ -79,6 +80,7 @@ class RegionDialog(QDialog):
         super().__init__(window)
         self.setLayoutDirection(window.layoutDirection())
         self.window = window
+        self.engine = window.engine
         self.setWindowTitle(window.tr("Metering region", "منطقة قياس الضوء"))
         self.setStyleSheet("QDialog {background:#20242b;}")
         layout = QVBoxLayout(self)
@@ -142,6 +144,7 @@ class SetupWizard(QDialog):
         super().__init__(window)
         self.setLayoutDirection(window.layoutDirection())
         self.window = window
+        self.engine = window.engine
         self.setWindowTitle(window.tr("First setup", "الإعداد الأول"))
         self.setStyleSheet("QDialog {background:#20242b;}")
         self.resize(550, 420)
@@ -316,6 +319,7 @@ class ExtrasMixin:
                     "Stop automatic mode before changing settings.": "أوقف الوضع التلقائي قبل تغيير الإعدادات.",
                     "No saved curve changes to undo.": "لا توجد تعديلات محفوظة للتراجع عنها.",
                     "Invalid Auto Brightness settings file.": "ملف إعدادات الإضاءة التلقائية غير صالح.",
+                    "Could not save settings. Check folder permissions.": "تعذّر حفظ الإعدادات. تحقّق من صلاحيات المجلد.",
                 }.get(str(error), str(error)),
             ),
         )
@@ -505,12 +509,28 @@ class ExtrasMixin:
         if self.pending_update:
             QDesktopServices.openUrl(QUrl(self.pending_update["url"]))
 
+    def diagnostics_dialog(self):
+        from .recovery_ui import DiagnosticDialog
+
+        self.diagnostic_dialog = DiagnosticDialog(self)
+        self.diagnostic_dialog.open()
+
+    def backups_dialog(self):
+        if self.engine.running or self.engine.busy or self.engine.resume_pending:
+            return
+        from .recovery_ui import BackupDialog
+
+        self.backup_dialog = BackupDialog(self)
+        self.backup_dialog.open()
+
     def extras_settings(self, layout):
         from .qt_ui import ToggleSwitch, NoWheelSpinBox
 
         e = self.engine
         layout.addWidget(self.label(self.tr("Setup and tools", "الإعداد والأدوات"), True))
         for en, ar, action in [
+            ("Diagnostic report", "تقرير التشخيص", self.diagnostics_dialog),
+            ("Restore a backup", "استعادة نسخة احتياطية", self.backups_dialog),
             ("First setup", "الإعداد الأول", self.open_wizard),
             ("Metering region", "منطقة قياس الضوء", self.region_dialog),
             ("Export settings", "تصدير الإعدادات", self.export_options),
@@ -521,7 +541,7 @@ class ExtrasMixin:
             button = QPushButton(self.tr(en, ar))
             button.clicked.connect(action)
             layout.addWidget(button)
-            if action not in (self.export_options,):
+            if action not in (self.export_options, self.diagnostics_dialog):
                 self.locked.append(button)
         layout.addWidget(self.label(self.tr("Usage profiles", "ملفات الاستخدام"), True))
         combo = self.combo(

@@ -89,6 +89,7 @@ class Engine(ui.App):
         self.tray_icon = None
         self.last_meter = None
         self.history = deque(maxlen=180)
+        self.health_events = deque(maxlen=50)
         self.pause_reasons = set()
         self.resume_pending = False
         self.diagnostic = ""
@@ -167,6 +168,9 @@ class Engine(ui.App):
             return True
         except OSError as exc:
             self.error_details = str(exc)
+            self.health_events.append(
+                {"time": time.monotonic(), "category": "settings_write_failed"}
+            )
             self.set_status("error", "error_settings")
             return False
 
@@ -330,13 +334,24 @@ class Engine(ui.App):
     def apply_preferences(self, settings):
         if self.running or self.busy or self.resume_pending:
             raise ValueError("Stop automatic mode before changing settings.")
-        from .settings import validate
+        from .settings import validate, save_settings
 
-        if settings.get("custom_points") != self.preferences["custom_points"]:
-            self.remember_curve()
+        candidate = validate(settings)
         history = copy.deepcopy(self.preferences["curve_history"])
-        self.preferences = validate(settings)
-        self.preferences["curve_history"] = history
+        if candidate["custom_points"] != self.preferences["custom_points"]:
+            points = copy.deepcopy(self.preferences["custom_points"])
+            if not history or history[-1] != points:
+                history.append(points)
+        candidate["curve_history"] = history[-20:]
+        try:
+            save_settings(self.directory, candidate)
+        except OSError as error:
+            self.error_details = str(error)
+            self.health_events.append(
+                {"time": time.monotonic(), "category": "settings_write_failed"}
+            )
+            raise ValueError("Could not save settings. Check folder permissions.") from error
+        self.preferences = candidate
         for key, var in (
             ("low", self.low),
             ("high", self.high),
@@ -344,16 +359,15 @@ class Engine(ui.App):
             ("interval_battery", self.interval_battery),
             ("restore", self.restore),
         ):
-            var.set(self.preferences[key])
-        self.language = resolve_language(self.preferences["language"])
-        self.theme = resolve_theme(self.preferences["theme"])
+            var.set(candidate[key])
+        self.language = resolve_language(candidate["language"])
+        self.theme = resolve_theme(candidate["theme"])
         self.palette = PALETTES[self.theme]
         self.controller = None
         self.verified = False
         self.last_meter = None
         self.history.clear()
         self.sampling_budget.reset()
-        self.persist()
 
     def apply_profile(self, name):
         from .extras import profile_settings
@@ -410,9 +424,17 @@ class Engine(ui.App):
         )
 
     def handle_error(self, operation, error):
-        if self.running and (
-            operation == "retry_devices"
-            or (operation in ("control", "measure") and "camera" in str(error).lower())
+        from .recovery import error_category
+
+        category = error_category(operation, error)
+        self.health_events.append({"time": time.monotonic(), "category": category})
+        if (
+            self.running
+            and category != "permission_denied"
+            and (
+                operation == "retry_devices"
+                or (operation in ("control", "measure") and "camera" in str(error).lower())
+            )
         ):
             self.error_details = str(error)
             self.cancel.clear()

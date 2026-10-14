@@ -336,3 +336,14 @@ class QtInterfaceTests(unittest.TestCase):
         dialog.reject()
         self.assertFalse(self.engine.preview_enabled)
         dialog.deleteLater()
+
+    def test_diagnostic_preview_excludes_raw_errors(self):
+        from room_brightness.recovery_ui import DiagnosticDialog
+
+        self.engine.error_details = "private-path/private-camera"
+        dialog = DiagnosticDialog(self.window)
+        self.assertTrue(dialog.preview.isReadOnly())
+        self.assertNotIn("private-path", dialog.preview.toPlainText())
+        self.assertIn("report_format", dialog.preview.toPlainText())
+        dialog.reject()
+        dialog.deleteLater()

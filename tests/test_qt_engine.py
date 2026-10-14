@@ -209,3 +209,23 @@ class NativeEngineTests(unittest.TestCase):
         self.engine.persist()
         self.engine.undo_curve()
         self.assertEqual(self.engine.preferences["custom_points"], original)
+
+    def test_failed_import_does_not_change_runtime_preferences(self):
+        import copy
+
+        settings = copy.deepcopy(self.engine.preferences)
+        settings.update(low=0, high=100)
+        with patch("room_brightness.settings.save_settings", side_effect=OSError("disk full")):
+            with self.assertRaises(ValueError):
+                self.engine.apply_preferences(settings)
+        self.assertEqual((self.engine.low.get(), self.engine.high.get()), (10, 80))
+        self.assertEqual(self.engine.preferences["low"], 10)
+        self.assertEqual(self.engine.health_events[-1]["category"], "settings_write_failed")
+
+    def test_camera_permission_failure_stops_instead_of_retrying_forever(self):
+        self.engine.running = True
+        self.engine.restore.set(False)
+        self.engine.handle_error("control", "Camera permission denied")
+        self.assertFalse(self.engine.running)
+        self.assertEqual(self.engine.retry_attempt, 0)
+        self.assertEqual(self.engine.health_events[-1]["category"], "permission_denied")
