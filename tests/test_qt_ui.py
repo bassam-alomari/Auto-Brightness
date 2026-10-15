@@ -279,7 +279,8 @@ class QtInterfaceTests(unittest.TestCase):
                     control.currentIndex() if isinstance(control, RoundedCombo) else control.value()
                 )
                 self.assertEqual(before, after)
-                self.assertFalse(event.isAccepted())
+                # The containing scroll area may accept the ignored event to scroll the page.
+                # Input values must remain unchanged regardless of propagation.
 
     def test_numeric_settings_are_right_aligned_in_arabic(self):
         from PySide6.QtCore import Qt
@@ -347,3 +348,44 @@ class QtInterfaceTests(unittest.TestCase):
         self.assertIn("report_format", dialog.preview.toPlainText())
         dialog.reject()
         dialog.deleteLater()
+
+    def test_settings_search_reveals_advanced_without_changing_values(self):
+        self.window.page = "settings"
+        self.window.change_language("ar")
+        self.window.build()
+        advanced = [
+            section
+            for section, is_advanced, terms, surface in self.window.settings_sections
+            if is_advanced
+        ]
+        self.assertTrue(advanced)
+        self.assertTrue(all(section.isHidden() for section in advanced))
+        before = self.engine.preferences.copy()
+        self.window.settings_search.setText("نسخة احتياطية")
+        self.assertTrue(any(not section.isHidden() for section in advanced))
+        self.assertEqual(self.engine.preferences, before)
+        self.window.settings_search.clear()
+        self.assertTrue(all(section.isHidden() for section in advanced))
+        self.window.settings_search.setText("not-a-real-setting-xyz")
+        self.assertFalse(self.window.settings_no_results.isHidden())
+
+    def test_curve_preview_does_not_call_hardware_or_change_settings(self):
+        from room_brightness.easy_ui import CurvePreview
+        import copy
+
+        before = copy.deepcopy(self.engine.preferences)
+        with (
+            patch("room_brightness.ui.set_checked") as write,
+            patch("room_brightness.brightness.smooth_to") as ramp,
+            patch("room_brightness.camera.sample") as sample,
+        ):
+            dialog = CurvePreview(self.window)
+            for reading, expected in ((15, 50), (20, 70), (25, 80), (27, 80)):
+                dialog.input.setValue(reading)
+                self.assertEqual(dialog.target_value, expected)
+            write.assert_not_called()
+            ramp.assert_not_called()
+            sample.assert_not_called()
+            self.assertEqual(before, self.engine.preferences)
+            dialog.reject()
+            dialog.deleteLater()

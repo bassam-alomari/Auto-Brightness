@@ -1,3 +1,10 @@
+# 0.4.0
+
+- Simplify Settings with basic sections, a session-local advanced toggle, and accent/Arabic-tolerant search that reveals matching advanced sections.
+- Add a hardware-free curve preview using a snapshot of the current curve and limits; simulated readings never change settings, capture images, or write brightness.
+- Add 15/30/60-minute automatic-mode pauses, a countdown, and Resume now. Pausing cancels camera/control work without restoring the old brightness.
+- Stop cancels pending timed resume; expiry waits for lock/sleep reasons to clear. Manual brightness changes made during a pause retain priority on resume.
+
 # 0.3.1
 
 - Keep the last ten changed settings snapshots locally and recover the newest valid snapshot when current settings are missing or corrupt.

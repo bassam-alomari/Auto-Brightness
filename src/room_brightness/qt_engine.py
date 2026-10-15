@@ -92,6 +92,8 @@ class Engine(ui.App):
         self.health_events = deque(maxlen=50)
         self.pause_reasons = set()
         self.resume_pending = False
+        self.pause_deadline = None
+        self.pause_timer = None
         self.diagnostic = ""
         self.power_mode = "ac"
         self.sampling_budget = SamplingBudget()
@@ -142,10 +144,19 @@ class Engine(ui.App):
 
     def work(self, function, done, operation):
         def completed(result):
-            done(result)
-            if operation == "test" and hasattr(self, "resume_original"):
-                self.original = self.resume_original
+            resuming = operation == "test" and hasattr(self, "resume_original")
+            expected = getattr(self, "resume_expected", None)
+            manual = resuming and expected is not None and result != expected
+            if resuming:
+                self.original = result if manual else self.resume_original
                 del self.resume_original
+                if hasattr(self, "resume_expected"):
+                    del self.resume_expected
+            done(result)
+            if manual and self.running and self.controller:
+                self.controller.hold_until = time.monotonic() + 180
+                self.controller.preferred = result
+                self.controller.manual_reference = True
 
         return super().work(function, completed, operation)
 
@@ -230,10 +241,16 @@ class Engine(ui.App):
                 if timer is not None:
                     self.root.after_cancel(timer)
                     setattr(self, key, None)
-            self.diagnostic = "paused"
+            self.diagnostic = "timed_paused" if reason == "timed" else "paused"
             self.status_title.set(self.t("stopped"))
             self.status.set(
-                "الكاميرا متوقفة أثناء القفل أو السكون"
+                (
+                    "الوضع التلقائي متوقف مؤقتًا؛ السطوع محفوظ والكاميرا متوقفة."
+                    if self.language == "ar"
+                    else "Automatic mode paused; brightness held and camera stopped."
+                )
+                if reason == "timed"
+                else "الكاميرا متوقفة أثناء القفل أو السكون"
                 if self.language == "ar"
                 else "Camera paused while locked or sleeping"
             )
@@ -253,6 +270,7 @@ class Engine(ui.App):
         self.cancel.clear()
         # Re-verify the display and camera after resume; preserve the initial restore value.
         old = self.original
+        self.resume_expected = self.controller.expected if self.controller else None
         self.verify(start_after=True)
         self.resume_original = old
 
@@ -260,7 +278,48 @@ class Engine(ui.App):
         if not self.pause_reasons:
             super().start()
 
+    def pause_for(self, minutes):
+        if minutes not in (15, 30, 60):
+            raise ValueError("Invalid pause duration.")
+        if not self.running and "timed" not in self.pause_reasons:
+            return
+        self.clear_pause_timer()
+        self.pause_deadline = time.monotonic() + minutes * 60
+        self.session_pause("timed", True)
+        self.pause_tick()
+
+    def clear_pause_timer(self):
+        if self.pause_timer is not None:
+            self.root.after_cancel(self.pause_timer)
+            self.pause_timer = None
+
+    def pause_remaining(self):
+        import math
+
+        return (
+            max(0, math.ceil(self.pause_deadline - time.monotonic()))
+            if self.pause_deadline is not None
+            else 0
+        )
+
+    def pause_tick(self):
+        self.pause_timer = None
+        if self.pause_deadline is None:
+            return
+        if self.pause_remaining() == 0:
+            self.resume_now()
+            return
+        self.pause_timer = self.root.after(1000, self.pause_tick)
+
+    def resume_now(self):
+        self.clear_pause_timer()
+        self.pause_deadline = None
+        self.session_pause("timed", False)
+
     def stop(self):
+        self.clear_pause_timer()
+        self.pause_deadline = None
+        self.pause_reasons.discard("timed")
         self.resume_pending = False
         super().stop()
 
@@ -424,6 +483,10 @@ class Engine(ui.App):
         )
 
     def handle_error(self, operation, error):
+        if operation == "test":
+            for name in ("resume_original", "resume_expected"):
+                if hasattr(self, name):
+                    delattr(self, name)
         from .recovery import error_category
 
         category = error_category(operation, error)
@@ -450,6 +513,14 @@ class Engine(ui.App):
         pass
 
     def render_status(self):
+        if "timed" in self.pause_reasons:
+            self.status_title.set(self.t("stopped"))
+            self.status.set(
+                "الوضع التلقائي متوقف مؤقتًا؛ السطوع محفوظ والكاميرا متوقفة."
+                if self.language == "ar"
+                else "Automatic mode paused; brightness held and camera stopped."
+            )
+            return
         title, description, values = self.status_state
         self.status_title.set(self.t(title))
         self.status.set(self.t(description, **values))

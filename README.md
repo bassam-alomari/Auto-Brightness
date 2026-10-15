@@ -54,7 +54,7 @@ The camera is cancelled on Windows lock/suspend and restarted after unlock/resum
 
 ## Standalone installation
 
-Download `AutoBrightness-0.3.1-Setup.exe` from the release assets, close any running copy using Exit, and run the installer. It installs under your current account without Python or administrator privileges and creates Desktop and Start menu shortcuts. Remove it through Windows Installed apps; personal preferences are preserved. A portable ZIP is also available: extract it and open `AutoBrightness.exe`.
+Download `AutoBrightness-0.4.0-Setup.exe` from the release assets, close any running copy using Exit, and run the installer. It installs under your current account without Python or administrator privileges and creates Desktop and Start menu shortcuts. Remove it through Windows Installed apps; personal preferences are preserved. A portable ZIP is also available: extract it and open `AutoBrightness.exe`.
 
 For developers: `python -m pip install -e ".[windows-build]"` then `python packaging/build_windows.py` on Windows with Python 3.12 x64 builds both packages. The Windows installer workflow also builds them when run manually or on a version tag.
 
@@ -84,3 +84,11 @@ Power saving is optional and initially disabled. After four stable light/brightn
 Changed settings create up to ten local snapshots under the preferences folder, while identical saves create no duplicates. Missing or corrupt current settings recover the newest valid snapshot. Settings → Restore a backup previews available snapshots and asks before applying one. Current camera/display identity and startup registration are preserved, and current preferences are backed up before restoration. If writing fails, imported/profile preferences are not applied to runtime.
 
 Settings → Diagnostic report opens a read-only preview before saving a JSON file. It includes the app version, numerical control settings, up to 60 recent readings, and up to 50 categorized errors from the current session. It excludes images, device names/identifiers, account/file paths, raw error text, and named profiles. Reports are never sent automatically. Camera permission failures stop with an error rather than retrying indefinitely; ordinary busy/disconnected-camera retries remain available.
+
+## Simpler controls in 0.4.0
+
+Settings initially shows the basic sections. Show advanced settings reveals the remaining tools and stability/power options; search finds matching sections even when advanced controls are collapsed. Search tolerates accents and common Arabic letter variations. The toggle and search are retained within the current window session. Clearing search restores the chosen basic/advanced view.
+
+Preview curve takes a snapshot of the selected curve and effective controller limits (or general limits when stopped). Simulate readings from 0 to 255 to see the curve target before confirmation/manual holds, without changing actual screen brightness, preferences, or camera state.
+
+From Home, pause automatic mode for 15, 30, or 60 minutes. The countdown updates while camera/control work is cancelled and current brightness is retained. Resume now ends the pause early. Stop cancels automatic resumption. If the timer expires while locked or sleeping, resumption waits until all pause reasons clear. A detected manual brightness change during the pause gets the normal three-minute priority hold after resume. Pauses are session-only; quitting does not silently resume the camera on the next launch.

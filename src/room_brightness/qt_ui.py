@@ -45,6 +45,7 @@ from .adaptive import image_target, CURVES
 from .comfort_ui import CurveDialog, History, DIAGNOSTICS
 from .comfort import target as custom_target
 from .extras_ui import ExtrasMixin
+from .easy_ui import EasyMixin
 from .camera import sample
 from . import __version__
 from .i18n import LANGUAGES, literal
@@ -469,7 +470,7 @@ class Curve(QWidget):
             painter.drawText(rect, flags | align | direction, caption)
 
 
-class Window(ExtrasMixin, QWidget):
+class Window(EasyMixin, ExtrasMixin, QWidget):
     def __init__(self, root, engine):
         super().__init__()
         self.root, self.engine = root, engine
@@ -480,6 +481,8 @@ class Window(ExtrasMixin, QWidget):
         self.expanded = False
         self.restore_geometry = None
         self.page = "home"
+        self.advanced_visible = False
+        self.settings_query = ""
         self.signature = None
         self.closing = False
         self.update_pending = False
@@ -582,7 +585,7 @@ class Window(ExtrasMixin, QWidget):
             QLabel#heading {{ font-size: 20px; font-weight: 600; }}
             QLabel#metric {{ font-size: 82px; font-weight: 600; }}
             QLabel#muted {{ color: {muted}; }}
-            QPushButton, QComboBox, QSpinBox {{ background: {fill}; border: 1px solid {border}; border-radius: 18px; padding: 10px 16px; min-height: 22px; }}
+            QPushButton, QComboBox, QSpinBox, QLineEdit#settingsSearch {{ background: {fill}; border: 1px solid {border}; border-radius: 18px; padding: 10px 16px; min-height: 22px; }}
             QComboBox {{ padding-left: 16px; padding-right: 42px; }}
             QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: top right; width: 30px; border: none; background: transparent; }}
             QComboBox::down-arrow {{ image: url("{down}"); width: 14px; height: 12px; }}
@@ -723,6 +726,22 @@ class Window(ExtrasMixin, QWidget):
         buttons.addWidget(self.start_button)
         buttons.addWidget(self.stop_button)
         left.addLayout(buttons)
+        self.pause_combo = self.combo(
+            [
+                self.tr("Pause temporarily…", "إيقاف مؤقت…"),
+                self.tr("15 minutes", "15 دقيقة"),
+                self.tr("30 minutes", "30 دقيقة"),
+                self.tr("60 minutes", "60 دقيقة"),
+            ],
+            0,
+            self.pause_for,
+        )
+        left.addWidget(self.pause_combo)
+        self.pause_countdown = self.label("")
+        left.addWidget(self.pause_countdown)
+        self.resume_button = QPushButton(self.tr("Resume now", "استئناف الآن"))
+        self.resume_button.clicked.connect(e.resume_now)
+        left.addWidget(self.resume_button)
         manual_row = QHBoxLayout()
         self.manual_slider = GlassSlider(Qt.Orientation.Horizontal)
         self.manual_slider.setRange(0, 100)
@@ -931,6 +950,9 @@ class Window(ExtrasMixin, QWidget):
         right.addWidget(response)
         self.curve = Curve(self)
         right.addWidget(self.curve)
+        preview = QPushButton(self.tr("Preview curve", "معاينة المنحنى"))
+        preview.clicked.connect(self.preview_curve)
+        right.addWidget(preview)
         right.addWidget(
             self.label(
                 self.tr(
@@ -952,6 +974,7 @@ class Window(ExtrasMixin, QWidget):
                 )
             )
         right.addStretch()
+        self.organize_settings(left, right)
 
     def option_change(self, key, value):
         self.engine.preferences[key] = value
@@ -1094,13 +1117,26 @@ class Window(ExtrasMixin, QWidget):
                 if e.running
                 else self.tr("Measure only (brightness unchanged)", "قياس فقط (بدون تغيير السطوع)")
             )
-            self.start_button.setEnabled(not e.running and not e.busy and bool(e.devices))
-            self.stop_button.setEnabled(e.running or e.busy)
+            self.start_button.setEnabled(
+                not e.running and not e.busy and not e.pause_reasons and bool(e.devices)
+            )
+            timed = "timed" in e.pause_reasons
+            self.pause_combo.setEnabled(e.running or timed)
+            self.resume_button.setVisible(timed)
+            self.pause_countdown.setVisible(timed)
+            if timed:
+                remaining = e.pause_remaining()
+                minutes, seconds = divmod(remaining, 60)
+                self.pause_countdown.setText(
+                    self.tr("Resumes in ", "يُستأنف خلال ") + f"{minutes:02d}:{seconds:02d}"
+                )
+                self.mode_label.setText(self.tr("AUTOMATIC PAUSED", "السطوع التلقائي متوقف مؤقتًا"))
+            self.stop_button.setEnabled(e.running or e.busy or e.resume_pending)
             self.manual_button.setEnabled(not e.running and not e.busy)
             self.manual_slider.setEnabled(not e.running and not e.busy)
             self.refresh_button.setEnabled(not e.running and not e.busy)
-            self.check_button.setEnabled(not e.busy and bool(e.devices))
-            self.cameras.setEnabled(not e.running and not e.busy)
+            self.check_button.setEnabled(not e.busy and not e.pause_reasons and bool(e.devices))
+            self.cameras.setEnabled(not e.running and not e.busy and not e.resume_pending)
             names = e.device_labels()
             if [self.cameras.itemText(i) for i in range(self.cameras.count())] != names:
                 self.cameras.blockSignals(True)
@@ -1198,7 +1234,12 @@ class Window(ExtrasMixin, QWidget):
             self.displays_refresh.setEnabled(not self.engine.running and not self.engine.busy)
             self.history_chart.update()
             reason = self.engine.diagnostic
-            if self.engine.controller and time.monotonic() < self.engine.controller.hold_until:
+            if "timed" in self.engine.pause_reasons:
+                message = self.tr(
+                    "Automatic mode paused; brightness held and camera stopped.",
+                    "الوضع التلقائي متوقف مؤقتًا؛ السطوع محفوظ والكاميرا متوقفة.",
+                )
+            elif self.engine.controller and time.monotonic() < self.engine.controller.hold_until:
                 message = self.tr(
                     "Manual brightness takes priority for three minutes",
                     "السطوع اليدوي له الأولوية لمدة ثلاث دقائق",

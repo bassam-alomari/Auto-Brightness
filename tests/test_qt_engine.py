@@ -229,3 +229,54 @@ class NativeEngineTests(unittest.TestCase):
         self.assertFalse(self.engine.running)
         self.assertEqual(self.engine.retry_attempt, 0)
         self.assertEqual(self.engine.health_events[-1]["category"], "permission_denied")
+
+    def test_timed_pause_preserves_brightness_and_stop_cancels_resume(self):
+        self.engine.running = True
+        self.engine.restore.set(False)
+        with patch("room_brightness.ui.set_checked") as write:
+            self.engine.pause_for(15)
+            self.assertIn("timed", self.engine.pause_reasons)
+            self.assertFalse(self.engine.running)
+            self.assertTrue(self.engine.resume_pending)
+            self.assertGreater(self.engine.pause_remaining(), 898)
+            write.assert_not_called()
+            self.engine.stop()
+            self.assertIsNone(self.engine.pause_deadline)
+            self.assertIsNone(self.engine.pause_timer)
+            self.assertFalse(self.engine.resume_pending)
+
+    def test_pause_expiry_waits_for_unlock(self):
+        self.engine.running = True
+        self.engine.pause_for(15)
+        self.engine.session_pause("lock", True)
+        self.engine.pause_deadline = time.monotonic() - 1
+        with patch.object(self.engine, "verify") as verify:
+            self.engine.pause_tick()
+            self.assertNotIn("timed", self.engine.pause_reasons)
+            verify.assert_not_called()
+            self.engine.session_pause("lock", False)
+            verify.assert_called_once_with(start_after=True)
+
+    def test_manual_change_during_pause_is_preserved_on_resume(self):
+        from room_brightness import ui
+        from room_brightness.adaptive import AdaptiveController
+
+        self.engine.running = True
+        self.engine.original = 40
+        self.engine.controller = AdaptiveController(expected=50)
+        self.engine.pause_for(30)
+        state = [30]
+
+        def control(value=None):
+            if value is not None:
+                state[0] = value
+            return state[0]
+
+        with (
+            patch.object(ui, "brightness", side_effect=control),
+            patch.object(ui, "set_checked", side_effect=lambda value: value),
+        ):
+            self.engine.resume_now()
+            self.wait()
+        self.assertEqual(self.engine.original, 30)
+        self.assertGreater(self.engine.controller.hold_until, time.monotonic())
