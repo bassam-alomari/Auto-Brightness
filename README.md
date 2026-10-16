@@ -54,7 +54,7 @@ The camera is cancelled on Windows lock/suspend and restarted after unlock/resum
 
 ## Standalone installation
 
-Download `AutoBrightness-0.4.0-Setup.exe` from the release assets, close any running copy using Exit, and run the installer. It installs under your current account without Python or administrator privileges and creates Desktop and Start menu shortcuts. Remove it through Windows Installed apps; personal preferences are preserved. A portable ZIP is also available: extract it and open `AutoBrightness.exe`.
+Download `AutoBrightness-0.5.0-Setup.exe` from the release assets, close any running copy using Exit, and run the installer. It installs under your current account without Python or administrator privileges and creates Desktop and Start menu shortcuts. Remove it through Windows Installed apps; personal preferences are preserved. A portable ZIP is also available: extract it and open `AutoBrightness.exe`.
 
 For developers: `python -m pip install -e ".[windows-build]"` then `python packaging/build_windows.py` on Windows with Python 3.12 x64 builds both packages. The Windows installer workflow also builds them when run manually or on a version tag.
 
@@ -92,3 +92,9 @@ Settings initially shows the basic sections. Show advanced settings reveals the 
 Preview curve takes a snapshot of the selected curve and effective controller limits (or general limits when stopped). Simulate readings from 0 to 255 to see the curve target before confirmation/manual holds, without changing actual screen brightness, preferences, or camera state.
 
 From Home, pause automatic mode for 15, 30, or 60 minutes. The countdown updates while camera/control work is cancelled and current brightness is retained. Resume now ends the pause early. Stop cancels automatic resumption. If the timer expires while locked or sleeping, resumption waits until all pause reasons clear. A detected manual brightness change during the pause gets the normal three-minute priority hold after resume. Pauses are session-only; quitting does not silently resume the camera on the next launch.
+
+## Everyday controls (0.5.0)
+
+After a successful manual brightness adjustment, a reliable reading less than one minute old enables **Save this brightness to my curve**. Saving is explicit; stale readings and curves that would reverse direction are rejected. Stop automatic mode before saving settings. Existing curve undo remains available.
+
+The tray menu offers 15/30/60-minute pauses and Resume now. The main status area explains why brightness is held and counts down manual priority. Narrow windows stack their panels vertically. Settings includes an appearance sample with theme and glass-transparency controls: Cancel leaves settings untouched; Save applies and persists the choice while stopped.

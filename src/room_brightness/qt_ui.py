@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QHBoxLayout,
+    QBoxLayout,
     QFrame,
     QLabel,
     QMenu,
@@ -498,7 +499,7 @@ class Window(EasyMixin, ExtrasMixin, QWidget):
         self.tray.setIcon(icon)
         self.tray.activated.connect(self.tray_activate)
         self.resize(1000, 830)
-        self.setMinimumSize(800, 640)
+        self.setMinimumSize(540, 480)
         self.build()
         self.session_registered = False
         try:
@@ -675,7 +676,13 @@ class Window(EasyMixin, ExtrasMixin, QWidget):
             12 if e.language == "ar" else 0, 0, 0 if e.language == "ar" else 12, 0
         )
         self.content_layout.setSpacing(20)
-        panels = QHBoxLayout()
+        panels = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        self.panels = panels
+        panels.setDirection(
+            QBoxLayout.Direction.TopToBottom
+            if self.width() < 900
+            else QBoxLayout.Direction.LeftToRight
+        )
         panels.setSpacing(20)
         self.content_layout.addLayout(panels)
         if self.page == "home":
@@ -696,6 +703,8 @@ class Window(EasyMixin, ExtrasMixin, QWidget):
         status_card = Surface(self)
         self.status_title = self.label("", True)
         self.status_text = self.label("")
+        self.reason_text = self.label("")
+        status_card.layout_box.addWidget(self.reason_text)
         status_card.layout_box.addWidget(self.status_title)
         status_card.layout_box.addWidget(self.status_text)
         outer.addWidget(status_card)
@@ -763,6 +772,11 @@ class Window(EasyMixin, ExtrasMixin, QWidget):
         left.addWidget(self.manual_text, 0, Qt.AlignmentFlag.AlignHCenter)
         self.manual_button = self.button("manual_set", self.manual)
         left.addWidget(self.manual_button)
+        self.save_manual_button = QPushButton(
+            self.tr("Save this brightness to my curve", "حفظ هذا السطوع في منحناي")
+        )
+        self.save_manual_button.clicked.connect(self.save_manual_preference)
+        left.addWidget(self.save_manual_button)
         left.addWidget(self.label(e.t("manual_tip")))
         left.addStretch()
         right.addWidget(self.label(self.tr("Display", "الشاشة"), True))
@@ -851,6 +865,9 @@ class Window(EasyMixin, ExtrasMixin, QWidget):
                 )
             )
         left.addWidget(self.label(e.t("appearance")))
+        preview = QPushButton(self.tr("Preview appearance…", "معاينة المظهر…"))
+        preview.clicked.connect(self.preview_appearance)
+        left.addWidget(preview)
         left.addWidget(
             self.combo(
                 [e.t("system"), e.t("light_mode"), e.t("dark_mode"), e.t("glass_mode")]
@@ -1097,7 +1114,9 @@ class Window(EasyMixin, ExtrasMixin, QWidget):
         e = self.engine
         self.status_title.setText(e.status_title.get())
         self.status_text.setText(e.status.get())
+        self.reason_text.setText(self.brightness_reason())
         if self.page == "home":
+            self.save_manual_button.setVisible(e.manual_offer_available())
             self.metric_label.setText(e.display_value.get() + "%")
             mode = (
                 self.tr("AUTOMATIC ON", "التلقائي شغّال")
@@ -1287,6 +1306,12 @@ class Window(EasyMixin, ExtrasMixin, QWidget):
             surface.update()
 
     def resizeEvent(self, event):
+        if hasattr(self, "panels"):
+            self.panels.setDirection(
+                QBoxLayout.Direction.TopToBottom
+                if self.width() < 900
+                else QBoxLayout.Direction.LeftToRight
+            )
         # Clip the native client too, avoiding a square compositor fringe.
         outline = QPainterPath()
         outline.addRoundedRect(QRectF(self.rect()), 18, 18)
@@ -1481,6 +1506,27 @@ class Window(EasyMixin, ExtrasMixin, QWidget):
         ):
             action = menu.addAction(self.engine.t(key))
             action.triggered.connect(callback)
+        menu.addSeparator()
+        pause_actions = []
+        for minutes in (15, 30, 60):
+            action = menu.addAction(
+                self.tr("Pause for {minutes} minutes", "إيقاف مؤقت لمدة {minutes} دقيقة").format(
+                    minutes=minutes
+                )
+            )
+            action.triggered.connect(lambda checked=False, m=minutes: self.engine.pause_for(m))
+            pause_actions.append(action)
+        action = menu.addAction(self.tr("Resume now", "استئناف الآن"))
+        action.triggered.connect(self.engine.resume_now)
+        resume_action = action
+
+        def refresh_pause_actions():
+            for item in pause_actions:
+                item.setEnabled(self.engine.running or "timed" in self.engine.pause_reasons)
+            resume_action.setEnabled("timed" in self.engine.pause_reasons)
+
+        menu.aboutToShow.connect(refresh_pause_actions)
+        refresh_pause_actions()
         self.tray.setContextMenu(menu)
         self.tray.setToolTip(self.engine.t("app"))
 

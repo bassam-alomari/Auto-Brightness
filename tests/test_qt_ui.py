@@ -389,3 +389,68 @@ class QtInterfaceTests(unittest.TestCase):
             self.assertEqual(before, self.engine.preferences)
             dialog.reject()
             dialog.deleteLater()
+
+    def test_appearance_preview_cancel_and_save_are_transactional(self):
+        import copy
+        from room_brightness.easy_ui import AppearancePreview
+        from room_brightness.settings import load_settings
+
+        before = copy.deepcopy(self.engine.preferences)
+        dialog = AppearancePreview(self.window)
+        dialog.mode.setCurrentIndex(dialog.modes.index("glass"))
+        dialog.tint.setValue(72)
+        self.assertEqual(self.engine.preferences, before)
+        dialog.reject()
+        self.assertEqual(self.engine.preferences, before)
+        dialog = AppearancePreview(self.window)
+        dialog.mode.setCurrentIndex(dialog.modes.index("dark"))
+        dialog.tint.setValue(63)
+        dialog.save()
+        self.assertEqual(self.engine.preferences["theme"], "dark")
+        self.assertEqual(load_settings(Path(self.folder.name))["glass_tint"], 63)
+        dialog.deleteLater()
+
+    def test_manual_preference_offer_requires_fresh_reading_and_explicit_save(self):
+        import copy
+
+        before = copy.deepcopy(self.engine.preferences)
+        self.engine.last_meter = dict(level=20, quality=1)
+        self.engine.history.append((time.monotonic(), 20, 70, 70))
+        self.engine.manual_applied(65)
+        self.assertTrue(self.engine.manual_offer_available())
+        self.assertEqual(self.engine.preferences, before)
+        self.engine.save_manual_preference()
+        self.assertIn([20, 65], self.engine.preferences["custom_points"])
+        self.assertEqual(self.engine.preferences["brightness_curve"], "custom")
+        self.assertFalse(self.engine.manual_offer_available())
+        self.engine.last_meter = dict(level=20, quality=0.1)
+        self.engine.manual_applied(60)
+        self.assertFalse(self.engine.manual_offer_available())
+        with self.assertRaises(ValueError):
+            self.engine.save_manual_preference()
+
+    def test_narrow_window_uses_vertical_panels_and_rtl(self):
+        from PySide6.QtWidgets import QBoxLayout
+        from PySide6.QtCore import Qt
+
+        self.window.change_language("ar")
+        self.window.resize(600, 600)
+        self.qt.processEvents()
+        self.assertEqual(self.window.panels.direction(), QBoxLayout.Direction.TopToBottom)
+        self.assertEqual(self.window.layoutDirection(), Qt.LayoutDirection.RightToLeft)
+        self.window.resize(1050, 800)
+        self.qt.processEvents()
+        self.assertEqual(self.window.panels.direction(), QBoxLayout.Direction.LeftToRight)
+
+    def test_tray_pause_actions_and_primary_reason(self):
+        from room_brightness.adaptive import AdaptiveController
+
+        self.engine.running = True
+        self.engine.controller = AdaptiveController(low=10, high=80, expected=70)
+        self.window.update_tray_menu()
+        pause = next(a for a in self.window.tray_menu.actions() if "15" in a.text())
+        pause.trigger()
+        self.assertIn("timed", self.engine.pause_reasons)
+        self.assertIn("paused", self.window.brightness_reason())
+        self.engine.stop()
+        self.assertFalse(self.engine.resume_pending)

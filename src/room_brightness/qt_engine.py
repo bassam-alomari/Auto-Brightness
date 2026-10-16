@@ -87,6 +87,7 @@ class Engine(ui.App):
         self.palette = PALETTES[self.theme]
         self.view = "home"
         self.tray_icon = None
+        self.manual_offer = None
         self.last_meter = None
         self.history = deque(maxlen=180)
         self.health_events = deque(maxlen=50)
@@ -424,6 +425,7 @@ class Engine(ui.App):
         self.palette = PALETTES[self.theme]
         self.controller = None
         self.verified = False
+        self.manual_offer = None
         self.last_meter = None
         self.history.clear()
         self.sampling_budget.reset()
@@ -557,6 +559,46 @@ class Engine(ui.App):
         value = max(10, min(100, round(self.manual_value.get())))
         self.work(
             lambda: ui.set_checked(value),
-            lambda actual: self.display_value.set(str(actual)),
+            self.manual_applied,
             "control",
         )
+
+    def manual_applied(self, actual):
+        self.display_value.set(str(actual))
+        self.manual_offer = None
+        if (
+            self.last_meter
+            and self.last_meter.get("quality", 0) >= 0.35
+            and self.history
+            and time.monotonic() - self.history[-1][0] <= 60
+        ):
+            self.manual_offer = (
+                self.last_meter["level"],
+                int(actual),
+                time.monotonic(),
+                self.preferences["display_target"],
+            )
+
+    def manual_offer_available(self):
+        offer = self.manual_offer
+        return bool(
+            offer
+            and time.monotonic() - offer[2] <= 60
+            and str(offer[1]) == self.display_value.get()
+            and offer[3] == self.preferences["display_target"]
+            and not self.running
+            and not self.busy
+            and not self.resume_pending
+        )
+
+    def save_manual_preference(self):
+        if not self.manual_offer_available():
+            raise ValueError("Take a fresh light reading first.")
+        from .comfort import learned_points
+
+        candidate = copy.deepcopy(self.preferences)
+        level, actual, _, _ = self.manual_offer
+        candidate["custom_points"] = learned_points(candidate["custom_points"], level, actual)
+        candidate["brightness_curve"] = "custom"
+        self.apply_preferences(candidate)
+        self.manual_offer = None

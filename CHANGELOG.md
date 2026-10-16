@@ -1,3 +1,11 @@
+# 0.5.0
+
+- Offer an explicit save-to-curve action after a successful manual adjustment with a reliable light reading less than one minute old. Expire stale suggestions and preserve curve validation and undo history.
+- Add 15/30/60-minute pause and Resume now to the tray menu, with availability updated when opened.
+- Show the reason for held brightness in the main status area, including remaining manual-priority time.
+- Preview themes and glass transparency in a separate sample without saving or touching hardware; explicitly Save or Cancel.
+- Stack panels in narrow windows, lower the minimum window size, and preserve Arabic right-to-left alignment.
+
 # 0.4.0
 
 - Simplify Settings with basic sections, a session-local advanced toggle, and accent/Arabic-tolerant search that reveals matching advanced sections.

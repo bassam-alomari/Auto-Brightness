@@ -118,7 +118,176 @@ class CurvePreview(QDialog):
         )
 
 
+class AppearancePreview(QDialog):
+    """Local preview; only Save writes preferences, through the transactional engine."""
+
+    def __init__(self, owner):
+        super().__init__(owner)
+        self.owner = owner
+        self.engine = owner.engine
+        self.setWindowTitle(owner.tr("Preview appearance", "معاينة المظهر"))
+        self.setLayoutDirection(owner.layoutDirection())
+        self.resize(480, 490)
+        self.setStyleSheet(
+            "QDialog {background:#20242b; color:#f5f5f7;} QLabel {color:#f5f5f7; background:transparent; font-size:14px;} QPushButton {font-size:14px;}"
+        )
+        from .themes import THEME_NAMES
+        from .qt_ui import RoundedCombo, GlassSlider
+
+        self.modes = ("auto", "light", "dark", "glass", *THEME_NAMES)
+        layout = QVBoxLayout(self)
+        self.mode = RoundedCombo()
+        self.mode.addItems(
+            [
+                owner.engine.t("system"),
+                owner.engine.t("light_mode"),
+                owner.engine.t("dark_mode"),
+                owner.engine.t("glass_mode"),
+            ]
+            + [owner.tr(*v) for v in THEME_NAMES.values()]
+        )
+        self.mode.setCurrentIndex(self.modes.index(owner.engine.preferences["theme"]))
+        layout.addWidget(self.mode)
+        self.tint_label = QLabel()
+        self.tint_label.setAlignment(
+            Qt.AlignmentFlag.AlignAbsolute
+            | (
+                Qt.AlignmentFlag.AlignRight
+                if owner.engine.language == "ar"
+                else Qt.AlignmentFlag.AlignLeft
+            )
+        )
+        layout.addWidget(self.tint_label)
+        self.tint = GlassSlider(Qt.Orientation.Horizontal)
+        self.tint.setRange(0, 100)
+        self.tint.setValue(owner.engine.preferences["glass_tint"])
+        layout.addWidget(self.tint)
+        self.sample = QWidget()
+        self.sample.setObjectName("appearanceSample")
+        self.sample.setMinimumHeight(170)
+        sample_layout = QVBoxLayout(self.sample)
+        sample_layout.addWidget(QLabel(owner.engine.t("app")))
+        sample_layout.addWidget(QLabel(owner.tr("Screen brightness: 70%", "سطوع الشاشة: 70%")))
+        sample_layout.addWidget(QPushButton(owner.tr("Sample button", "زر تجريبي")))
+        layout.addWidget(self.sample)
+        self.message = QLabel(
+            owner.tr(
+                "Preview only. Save applies the appearance; Cancel keeps your current settings.",
+                "هذه معاينة فقط. اضغط حفظ لتطبيق المظهر أو إلغاء للاحتفاظ بإعداداتك.",
+            )
+        )
+        self.message.setWordWrap(True)
+        layout.addWidget(self.message)
+        row = QHBoxLayout()
+        layout.addLayout(row)
+        save = QPushButton(owner.tr("Save", "حفظ"))
+        save.clicked.connect(self.save)
+        cancel = QPushButton(owner.tr("Cancel", "إلغاء"))
+        cancel.clicked.connect(self.reject)
+        row.addWidget(save)
+        row.addWidget(cancel)
+        self.mode.currentIndexChanged.connect(self.refresh)
+        self.tint.valueChanged.connect(self.refresh)
+        self.refresh()
+
+    def refresh(self):
+        from .settings import resolve_theme
+        from .widgets import PALETTES
+
+        theme = resolve_theme(self.modes[self.mode.currentIndex()])
+        palette = PALETTES[theme]
+        glass = theme == "glass"
+        self.tint.setEnabled(glass)
+        self.tint_label.setText(
+            self.owner.tr("Glass transparency: {value}%", "شفافية الزجاج: {value}%").format(
+                value=100 - self.tint.value()
+            )
+        )
+        # An explicit sample backdrop makes glass tint visible without capturing the desktop.
+        background = (
+            f"rgba(12,35,65,{round(35 + self.tint.value() * 2.2)})" if glass else palette["card"]
+        )
+        ink = "#ffffff" if glass else palette["ink"]
+        self.sample.setStyleSheet(
+            f"QWidget#appearanceSample {{background:{background}; border-radius:12px;}} QLabel {{background:transparent; color:{ink};}} QPushButton {{background:{palette['accent']}; color:white; padding:10px;}}"
+        )
+
+    def save(self):
+        from PySide6.QtWidgets import QMessageBox
+
+        candidate = copy.deepcopy(self.owner.engine.preferences)
+        candidate.update(theme=self.modes[self.mode.currentIndex()], glass_tint=self.tint.value())
+        try:
+            self.owner.engine.apply_preferences(candidate)
+        except ValueError:
+            QMessageBox.information(
+                self,
+                self.windowTitle(),
+                self.owner.tr(
+                    "Stop automatic mode and wait for the current operation before saving appearance.",
+                    "أوقف الوضع التلقائي وانتظر انتهاء العملية الحالية قبل حفظ المظهر.",
+                ),
+            )
+            return
+        self.accept()
+        self.owner.build()
+
+
 class EasyMixin:
+    def brightness_reason(self):
+        import time
+        from .comfort_ui import DIAGNOSTICS
+
+        e = self.engine
+        if "timed" in e.pause_reasons:
+            return self.tr("Automatic mode is temporarily paused.", "الوضع التلقائي متوقف مؤقتًا.")
+        if e.pause_reasons:
+            return self.tr(*DIAGNOSTICS["paused"])
+        if e.controller and time.monotonic() < e.controller.hold_until:
+            remaining = max(0, int(e.controller.hold_until - time.monotonic()))
+            return self.tr(
+                "Your manual brightness has priority for {seconds}s.",
+                "لسطوعك اليدوي الأولوية لمدة {seconds} ثانية.",
+            ).format(seconds=remaining)
+        if e.busy:
+            return self.tr(
+                "A brightness or camera operation is in progress.",
+                "يجري تنفيذ عملية للسطوع أو الكاميرا.",
+            )
+        if not e.running:
+            return self.tr(
+                "Automatic mode is off; brightness stays under your control.",
+                "الوضع التلقائي متوقف؛ يمكنك التحكم بالسطوع يدويًا.",
+            )
+        return self.tr(
+            *DIAGNOSTICS.get(
+                e.diagnostic, ("Waiting for a light reading.", "بانتظار قراءة للإضاءة.")
+            )
+        )
+
+    def save_manual_preference(self):
+        from PySide6.QtWidgets import QMessageBox
+
+        try:
+            self.engine.save_manual_preference()
+            self.build()
+        except ValueError as error:
+            messages = {
+                "Take a fresh light reading first.": "خذ قراءة جديدة للإضاءة أولًا.",
+                "This preference would reverse the curve. Adjust neighboring points first.": "ستعكس هذه النقطة اتجاه المنحنى. عدّل النقاط المجاورة من محرر المنحنى أولًا.",
+                "Could not save settings. Check folder permissions.": "تعذّر حفظ الإعدادات. تحقق من أذونات المجلد.",
+                "Stop automatic mode before changing settings.": "أوقف الوضع التلقائي قبل حفظ التفضيل.",
+            }
+            QMessageBox.information(
+                self,
+                self.tr("Preference", "التفضيل"),
+                self.tr(str(error), messages.get(str(error), "تعذّر حفظ التفضيل.")),
+            )
+
+    def preview_appearance(self):
+        self.appearance_dialog = AppearancePreview(self)
+        self.appearance_dialog.open()
+
     def preview_curve(self):
         self.curve_preview = CurvePreview(self)
         self.curve_preview.open()
