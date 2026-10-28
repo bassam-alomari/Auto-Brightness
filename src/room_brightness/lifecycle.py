@@ -4,7 +4,14 @@ import copy
 import time
 from collections import deque
 
-CAMERA_KEYS = ("custom_points", "brightness_curve", "meter_region", "spatial_protection")
+CAMERA_KEYS = (
+    "custom_points",
+    "brightness_curve",
+    "meter_region",
+    "spatial_protection",
+    "separate_power_curves",
+    "power_curves",
+)
 
 
 class Lifecycle:
@@ -63,6 +70,8 @@ class Lifecycle:
                 del profiles[next(iter(profiles))]
 
     def choose_device(self, device):
+        if self.trial_original is not None and device["id"] != self.camera_id:
+            raise ValueError("Finish the temporary trial first.")
         from .settings import DEFAULTS
 
         if device["id"] != self.camera_id:

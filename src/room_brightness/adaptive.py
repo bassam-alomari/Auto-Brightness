@@ -77,6 +77,7 @@ class AdaptiveController:
     image_recovery: bool = False
     bright_samples: int = 0
     dark_samples: int = 0
+    covered_samples: int = 0
     confirmations: int = 0
     direction: int = 0
     needs_anchor: bool = True
@@ -110,6 +111,14 @@ class AdaptiveController:
         manual = self.observe(current, now)
         if manual or now < self.hold_until:
             self.dark_samples = 0
+            return current
+        self.covered_samples = (
+            self.covered_samples + 1 if measurement.get("possibly_covered") is True else 0
+        )
+        if self.covered_samples and (self.options or {}).get("cover_guard", True):
+            self.reason = "possible_cover" if self.covered_samples >= 2 else "uncertain"
+            if self.stability is not None:
+                self.stability.pending, self.stability.count = None, 0
             return current
         if self.mapping == "image":
             level = measurement.get("level")

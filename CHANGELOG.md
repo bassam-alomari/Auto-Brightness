@@ -1,3 +1,13 @@
+# 0.8.0
+
+- Flag repeatedly near-black, nearly textureless camera pairs as possibly covered and hold brightness. The message explicitly allows extreme room darkness; no physical-shutter recognition is claimed. Manual priority and confidence rules remain in force.
+- Add opt-in independent full AC/battery curves, preserved per camera and in portable settings. Select the active curve each reading cycle; comparison/calibration saves to the chosen power source when enabled.
+- Add a one-minute trial for common brightness limits, a shared curve and cover protection. Runtime changes are not persisted until Keep; expiry/Stop/Exit revert them. Keep/revert stop automatic mode, wait for serialized work and preserve manual-override detection if restoration is deferred by a lock/pause.
+- Show last image level, raw curve target, guarded target and current display value separately.
+- Add tray quick controls for current brightness, Start/Stop, pause/resume and usage profiles. Single-click opens the panel; double-click opens the main window.
+- Keep one recognized previous installed app and provide an explicit local rollback action. Validate installation location/markers, wait for exit, swap directories and re-register the previous version. Preserve a pre-rollback preferences copy; older versions may not understand new fields.
+- Add review-before-export problem ZIP containing a redacted diagnostic JSON and issue template. No images, device names, paths, raw errors or automatic upload.
+
 # 0.7.0
 
 - Add default-on checks at normal launch and daily, opt-in automatic download, version/release-note UI, progress/cancel, and explicit install/restart. Only this repository's stable Windows installer asset is accepted, with bounded HTTPS redirects, declared size, PE header and GitHub-provided SHA-256 checks. Recheck the file immediately before launch; failed downloads leave the current app intact.

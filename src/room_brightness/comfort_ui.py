@@ -188,6 +188,10 @@ class History(QWidget):
 
 
 DIAGNOSTICS = {
+    "possible_cover": (
+        "The camera may be covered or the room extremely dark. Brightness held; check the lens.",
+        "قد تكون الكاميرا مغطاة أو الغرفة شديدة الظلام. ثُبّت السطوع؛ تحقق من العدسة.",
+    ),
     "device_wait": (
         "Waiting for the selected device to reconnect",
         "بانتظار إعادة توصيل الجهاز المحدد",

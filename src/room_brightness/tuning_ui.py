@@ -99,6 +99,14 @@ class CompareDialog(ToolDialog):
         from .qt_ui import GlassSlider
 
         self.original = copy.deepcopy(self.engine.preferences)
+        self.engine.refresh_power()
+        self.power_mode = self.engine.power_mode
+        from .experience import effective_curve
+
+        active = effective_curve(self.original, self.power_mode)
+        self.original.update(
+            brightness_curve=active["curve"], custom_points=copy.deepcopy(active["points"])
+        )
         self.candidate = copy.deepcopy(self.original)
         self.text(
             "Current: yellow · Proposed: blue. Simulation only; no brightness or camera changes.",
@@ -116,6 +124,13 @@ class CompareDialog(ToolDialog):
                 self.choose,
             )
             self.box.addWidget(self.choice)
+        if self.original["separate_power_curves"]:
+            self.text(
+                "Comparison/saving applies to the power source selected when opened: "
+                + self.power_mode,
+                "تنطبق المقارنة والحفظ على مصدر الطاقة عند فتح النافذة: "
+                + ("الشاحن" if self.power_mode == "ac" else "البطارية"),
+            )
         self.plot = ComparePlot(self)
         self.box.addWidget(self.plot)
         self.reading = GlassSlider(Qt.Orientation.Horizontal)
@@ -131,10 +146,20 @@ class CompareDialog(ToolDialog):
         self.button(
             "Save proposed curve",
             "حفظ المنحنى المقترح",
-            lambda: self.save_candidate(self.candidate),
+            self.save_comparison,
         )
         self.button("Cancel", "إلغاء", self.reject)
         self.refresh()
+
+    def save_comparison(self):
+        if not self.engine.preferences["separate_power_curves"]:
+            return self.save_candidate(self.candidate)
+        candidate = copy.deepcopy(self.engine.preferences)
+        candidate["power_curves"][self.power_mode] = {
+            "curve": self.candidate["brightness_curve"],
+            "points": copy.deepcopy(self.candidate["custom_points"]),
+        }
+        return self.save_candidate(candidate)
 
     def choose(self, index):
         self.candidate["brightness_curve"] = self.keys[index]

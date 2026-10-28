@@ -63,7 +63,7 @@ check = subprocess.run(
 if check.returncode or "Desktop smoke check passed" not in check.stdout:
     raise RuntimeError("Standalone app smoke check failed: " + check.stdout + check.stderr)
 
-for name in ("RegisterInstall.ps1", "Uninstall.ps1"):
+for name in ("RegisterInstall.ps1", "Uninstall.ps1", "Rollback.ps1"):
     shutil.copy2(project / "packaging" / name, app / name)
 for name in ("LICENSE", "THIRD_PARTY_NOTICES.md", "README.md", "README.ar.md"):
     shutil.copy2(project / name, app / name)
@@ -93,7 +93,7 @@ for source in (Path(sys.base_prefix) / "LICENSE.txt", Path(sys.base_prefix) / "L
     if source.is_file():
         licenses.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, licenses / "Python-LICENSE.txt")
-archive = out / "AutoBrightness-0.7.0-portable.zip"
+archive = out / "AutoBrightness-0.8.0-portable.zip"
 with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:
     for file in app.rglob("*"):
         if file.is_file():
@@ -104,7 +104,7 @@ subprocess.run(
         str(csc),
         "/nologo",
         "/target:winexe",
-        f"/out:{out / 'AutoBrightness-0.7.0-Setup.exe'}",
+        f"/out:{out / 'AutoBrightness-0.8.0-Setup.exe'}",
         f"/win32icon:{project / 'src/room_brightness/app.ico'}",
         f"/resource:{archive},payload.zip",
         "/reference:System.Windows.Forms.dll",

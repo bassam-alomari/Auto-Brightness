@@ -40,6 +40,7 @@ def analyze_frame(gray, exposure=None):
         confidence=confidence,
         exposure=exposure if supported else None,
         contrast=float(p90 - p10),
+        possibly_covered=bool(luminance <= 2 and p90 - p10 <= 1.5 and np.mean(image < 3) >= 0.98),
         zones=[2 * math.log2(max(value, 1) / 255) - correction for value in zones],
     )
 
@@ -57,6 +58,7 @@ def combine_frames(frames):
         confidence *= 0.35  # Wait out exposure/scene settling.
     return dict(
         score=middle,
+        possibly_covered=all(frame.get("possibly_covered", False) for frame in frames),
         level=float(np.median([frame["level"] for frame in frames])),
         confidence=confidence,
         exposure=float(np.median([frame["exposure"] for frame in frames]))
@@ -70,6 +72,9 @@ def combine_frames(frames):
 def average_pair(first, second):
     """Average numeric lighting estimates; keep only the latest in-memory preview."""
     result = second.copy()
+    result["possibly_covered"] = bool(
+        first.get("possibly_covered") and second.get("possibly_covered")
+    )
     for key in ("level", "score"):
         result[key] = (first[key] + second[key]) / 2
     result["confidence"] = min(first["confidence"], second["confidence"])

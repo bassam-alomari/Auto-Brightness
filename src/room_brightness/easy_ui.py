@@ -47,6 +47,12 @@ class CurvePreview(QDialog):
             theme=original.theme,
             palette=original.palette.copy(),
         )
+        from .experience import effective_curve
+
+        active = effective_curve(original.preferences, original.power_mode)
+        self.engine.preferences.update(
+            brightness_curve=active["curve"], custom_points=copy.deepcopy(active["points"])
+        )
         self.setLayoutDirection(owner.layoutDirection())
         self.setStyleSheet("QDialog {background:#20242b;}")
         self.setWindowTitle(self.tr("Preview curve", "معاينة المنحنى"))

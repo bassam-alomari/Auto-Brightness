@@ -49,6 +49,7 @@ from .extras_ui import ExtrasMixin
 from .easy_ui import EasyMixin
 from .tuning_ui import TuningMixin
 from .session_ui import SessionMixin, accessible_widgets
+from .experience_ui import ExperienceMixin
 from .camera import sample
 from . import __version__
 from .i18n import LANGUAGES, literal
@@ -478,7 +479,7 @@ class Curve(QWidget):
             painter.drawText(rect, flags | align | direction, caption)
 
 
-class Window(SessionMixin, TuningMixin, EasyMixin, ExtrasMixin, QWidget):
+class Window(ExperienceMixin, SessionMixin, TuningMixin, EasyMixin, ExtrasMixin, QWidget):
     def __init__(self, root, engine):
         super().__init__()
         self.root, self.engine = root, engine
@@ -728,6 +729,16 @@ class Window(SessionMixin, TuningMixin, EasyMixin, ExtrasMixin, QWidget):
         left.addWidget(self.label(e.t("automatic"), True))
         self.mode_label = self.label("")
         left.addWidget(self.mode_label)
+        self.trial_label = self.label("")
+        left.addWidget(self.trial_label)
+        self.trial_keep = QPushButton(self.tr("Keep trial settings", "الاحتفاظ بإعدادات التجربة"))
+        self.trial_keep.clicked.connect(lambda: self.engine.end_trial(True))
+        left.addWidget(self.trial_keep)
+        self.trial_revert = QPushButton(self.tr("Revert trial now", "إنهاء التجربة والرجوع الآن"))
+        self.trial_revert.clicked.connect(lambda: self.engine.end_trial(False))
+        left.addWidget(self.trial_revert)
+        self.decision_label = self.label("")
+        left.addWidget(self.decision_label)
         session_button = QPushButton(self.tr("Session and updates", "الجلسة والتحديثات"))
         self.session_home_button = session_button
         session_button.clicked.connect(self.session_dialog)
@@ -993,6 +1004,7 @@ class Window(SessionMixin, TuningMixin, EasyMixin, ExtrasMixin, QWidget):
         session_button = QPushButton(self.tr("Session and updates", "الجلسة والتحديثات"))
         session_button.clicked.connect(self.session_dialog)
         left.addWidget(session_button)
+        self.experience_settings(left)
         self.tuning_settings(left)
         self.extras_settings(left)
         left.addStretch()
@@ -1132,6 +1144,27 @@ class Window(SessionMixin, TuningMixin, EasyMixin, ExtrasMixin, QWidget):
         self.status_text.setText(e.status.get())
         self.reason_text.setText(self.brightness_reason())
         if self.page == "home":
+            trial = e.trial_original is not None
+            for widget in (self.trial_label, self.trial_keep, self.trial_revert):
+                widget.setVisible(trial)
+            if trial:
+                self.trial_label.setText(
+                    self.tr(
+                        "Trial: {seconds}s left; Keep stops and saves.",
+                        "التجربة: تبقّى {seconds} ثانية؛ الاحتفاظ يوقفها ويحفظها.",
+                    ).format(seconds=e.trial_remaining())
+                )
+            for widget in (self.trial_keep, self.trial_revert):
+                widget.setEnabled(not e.trial_ending)
+            decision = e.decision_values()
+            self.decision_label.setText(
+                self.tr(
+                    "Last image: {image}/255 · Curve: {raw}% · After guards: {target}% · Screen: {current}%",
+                    "آخر صورة: {image}/255 · المنحنى: {raw}% · بعد الحماية: {target}% · الشاشة: {current}%",
+                ).format(**decision)
+                if decision
+                else ""
+            )
             release = e.update_client.release
             self.session_home_button.setText(
                 self.tr("Update available: ", "يتوفر تحديث: ") + release["version"]
@@ -1181,7 +1214,9 @@ class Window(SessionMixin, TuningMixin, EasyMixin, ExtrasMixin, QWidget):
             self.manual_slider.setEnabled(not e.running and not e.busy)
             self.refresh_button.setEnabled(not e.running and not e.busy)
             self.check_button.setEnabled(not e.busy and not e.pause_reasons and bool(e.devices))
-            self.cameras.setEnabled(not e.running and not e.busy and not e.resume_pending)
+            self.cameras.setEnabled(
+                not e.running and not e.busy and not e.resume_pending and e.trial_original is None
+            )
             names = e.device_labels()
             if [self.cameras.itemText(i) for i in range(self.cameras.count())] != names:
                 self.cameras.blockSignals(True)
@@ -1229,9 +1264,17 @@ class Window(SessionMixin, TuningMixin, EasyMixin, ExtrasMixin, QWidget):
                         self.preview.setPixmap(image)
                         self.preview.setProperty("source", png)
         else:
+            for index in range(self.panels.count()):
+                card = self.panels.itemAt(index).widget()
+                if card:
+                    card.setEnabled(e.trial_original is None)
             for widget in self.locked:
                 widget.setEnabled(
-                    not e.running and not e.busy and not e.resume_pending and not e.pause_reasons
+                    not e.running
+                    and not e.busy
+                    and not e.resume_pending
+                    and not e.pause_reasons
+                    and e.trial_original is None
                 )
 
     def sync(self):
@@ -1283,7 +1326,10 @@ class Window(SessionMixin, TuningMixin, EasyMixin, ExtrasMixin, QWidget):
                 )
                 self.displays_combo.blockSignals(False)
             self.displays_combo.setEnabled(
-                not self.engine.running and not self.engine.busy and not self.engine.resume_pending
+                not self.engine.running
+                and not self.engine.busy
+                and not self.engine.resume_pending
+                and self.engine.trial_original is None
             )
             self.displays_refresh.setEnabled(not self.engine.running and not self.engine.busy)
             self.history_chart.update()
@@ -1499,13 +1545,7 @@ class Window(SessionMixin, TuningMixin, EasyMixin, ExtrasMixin, QWidget):
                 e.last_meter = dict(
                     level=m["level"],
                     quality=m["confidence"],
-                    target=custom_target(
-                        m["level"], e.low.get(), e.high.get(), e.preferences["custom_points"]
-                    )
-                    if e.preferences["brightness_curve"] == "custom"
-                    else image_target(
-                        m["level"], e.low.get(), e.high.get(), e.preferences["brightness_curve"]
-                    ),
+                    target=e.target_for_level(m["level"]),
                     current=current,
                     exposure=m.get("exposure"),
                     exposure_corrected=m.get("exposure_corrected"),
@@ -1543,6 +1583,8 @@ class Window(SessionMixin, TuningMixin, EasyMixin, ExtrasMixin, QWidget):
         ):
             action = menu.addAction(self.engine.t(key))
             action.triggered.connect(callback)
+        action = menu.addAction(self.tr("Quick controls", "التحكم السريع"))
+        action.triggered.connect(self.quick_panel)
         menu.addSeparator()
         pause_actions = []
         for minutes in (15, 30, 60):
@@ -1574,10 +1616,11 @@ class Window(SessionMixin, TuningMixin, EasyMixin, ExtrasMixin, QWidget):
         self.tray.hide()
 
     def tray_activate(self, reason):
-        if reason in (
-            QSystemTrayIcon.ActivationReason.Trigger,
-            QSystemTrayIcon.ActivationReason.DoubleClick,
-        ):
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
+            self.quick_panel()
+        elif reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            if hasattr(self, "quick_window"):
+                self.quick_window.reject()
             self.restore_window()
 
     def hide_to_tray(self):

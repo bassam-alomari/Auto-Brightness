@@ -743,3 +743,196 @@ class QtInterfaceTests(unittest.TestCase):
         self.assertFalse(self.window.start_button.isEnabled())
         self.window.cameras.setCurrentIndex(0)
         self.assertEqual(self.engine.selected_device()["id"], "replacement")
+
+    def test_trial_never_persists_until_keep_and_expiry_restores(self):
+        import copy
+        from room_brightness.settings import load_settings
+
+        original = copy.deepcopy(self.engine.preferences)
+        baseline = load_settings(Path(self.folder.name))
+        candidate = copy.deepcopy(original)
+        candidate.update(low=20, high=70, brightness_curve="night")
+        self.engine.begin_trial(candidate)
+        self.assertEqual(self.engine.low.get(), 20)
+        self.engine.persist()
+        self.assertEqual(load_settings(Path(self.folder.name))["low"], baseline["low"])
+        self.engine.trial_deadline = time.monotonic() - 1
+        self.engine.trial_tick()
+        self.assertIsNone(self.engine.trial_original)
+        self.assertEqual(self.engine.preferences["low"], original["low"])
+        self.assertEqual(load_settings(Path(self.folder.name))["low"], baseline["low"])
+        self.engine.begin_trial(candidate)
+        self.engine.end_trial(True)
+        self.assertIsNone(self.engine.trial_original)
+        self.assertEqual(load_settings(Path(self.folder.name))["low"], 20)
+        self.assertTrue(self.engine.undo_options())
+        self.assertEqual(self.engine.low.get(), original["low"])
+
+    def test_trial_keep_failure_restores_previous_runtime_without_writing(self):
+        import copy
+
+        candidate = copy.deepcopy(self.engine.preferences)
+        candidate["low"] = 22
+        old = self.engine.low.get()
+        self.engine.begin_trial(candidate)
+        with patch("room_brightness.settings.save_settings", side_effect=OSError("denied")):
+            self.engine.end_trial(True)
+        self.assertEqual(self.engine.low.get(), old)
+        self.assertIsNone(self.engine.trial_original)
+        self.assertFalse(self.engine.trial_transition)
+
+    def test_trial_stop_and_busy_revert_wait_before_settings_change(self):
+        import copy
+
+        candidate = copy.deepcopy(self.engine.preferences)
+        candidate["low"] = 22
+        self.engine.begin_trial(candidate)
+        self.engine.busy = True
+        self.engine.stop()
+        self.assertTrue(self.engine.trial_ending)
+        self.assertTrue(self.engine.cancel.is_set())
+        self.engine.busy = False
+        for _ in range(5):
+            self.qt.processEvents()
+            time.sleep(0.04)
+        self.assertIsNone(self.engine.trial_original)
+        self.assertEqual(self.engine.low.get(), 10)
+
+    def test_power_curves_are_applied_to_next_controller_cycle(self):
+        from room_brightness.adaptive import AdaptiveController
+        from room_brightness.experience import effective_curve
+
+        self.engine.preferences["separate_power_curves"] = True
+        self.engine.preferences["power_curves"]["ac"]["points"] = [[12, 0], [20, 40], [40, 100]]
+        self.engine.controller = AdaptiveController(low=10, high=80, expected=60)
+        self.engine.running = True
+        self.engine.begin_pair_cycle()
+        curve = effective_curve(self.engine.preferences, self.engine.power_mode)
+        self.assertEqual(self.engine.controller.options["custom_points"], curve["points"])
+        self.assertEqual(self.engine.controller.image_curve, curve["curve"])
+        self.engine.stop()
+
+    def test_quick_panel_and_issue_report_do_not_capture_or_upload(self):
+        from room_brightness.experience_ui import QuickPanel, IssueDialog
+
+        with (
+            patch("room_brightness.camera.sample") as camera,
+            patch("room_brightness.updater.open_url") as network,
+        ):
+            self.engine.display_value.set("55")
+            panel = QuickPanel(self.window)
+            self.assertIn("55%", panel.metric_label.text())
+            panel.reject()
+            panel.deleteLater()
+            issue = IssueDialog(self.window)
+            report = issue.preview.toPlainText()
+            self.assertIn("device_health", report)
+            self.assertNotIn("Demo camera", report)
+            self.assertNotIn(self.folder.name, report)
+            issue.reject()
+            issue.deleteLater()
+            camera.assert_not_called()
+            network.assert_not_called()
+
+    def test_numeric_decision_explains_raw_target_and_held_brightness(self):
+        self.engine.last_meter = dict(level=20, target=60, current=60, quality=1)
+        self.engine.display_value.set("60")
+        values = self.engine.decision_values()
+        self.assertEqual(values["raw"], 70)
+        self.assertEqual(values["target"], 60)
+        self.window.update_values()
+        self.assertIn("70", self.window.decision_label.text())
+        self.assertIn("60", self.window.decision_label.text())
+
+    def test_trial_exit_reverts_before_normal_shutdown(self):
+        import copy
+
+        candidate = copy.deepcopy(self.engine.preferences)
+        candidate["low"] = 24
+        self.engine.begin_trial(candidate)
+        self.engine.exit_running_intent = True
+        with patch("room_brightness.ui.App.close") as close:
+            self.engine.close()
+            for _ in range(6):
+                self.qt.processEvents()
+                time.sleep(0.04)
+            close.assert_called_once()
+        self.assertIsNone(self.engine.trial_original)
+        self.assertEqual(self.engine.low.get(), 10)
+        self.assertFalse(self.engine.preferences["resume_was_running"])
+
+    def test_comparison_saves_active_power_curve_without_overwriting_other_source(self):
+        from room_brightness.tuning_ui import CompareDialog
+
+        self.engine.preferences["separate_power_curves"] = True
+        before = self.engine.preferences["power_curves"]["battery"]["points"]
+        dialog = CompareDialog(self.window, [[12, 0], [20, 40], [40, 100]])
+        dialog.power_mode = "ac"
+        dialog.save_comparison()
+        self.assertEqual(self.engine.preferences["power_curves"]["ac"]["points"][1], [20, 40])
+        self.assertEqual(self.engine.preferences["power_curves"]["battery"]["points"], before)
+        dialog.deleteLater()
+
+    def test_reviewed_issue_bundle_export_contains_no_images_or_paths(self):
+        from room_brightness.experience_ui import IssueDialog
+        import zipfile
+        import json
+
+        target = Path(self.folder.name) / "problem.zip"
+        dialog = IssueDialog(self.window)
+        with patch(
+            "room_brightness.experience_ui.QFileDialog.getSaveFileName",
+            return_value=(str(target), "ZIP"),
+        ):
+            dialog.save()
+        with zipfile.ZipFile(target) as archive:
+            self.assertEqual(set(archive.namelist()), {"diagnostics.json", "ISSUE.md"})
+            report = archive.read("diagnostics.json").decode()
+            self.assertNotIn(self.folder.name, report)
+            self.assertNotIn("Demo camera", report)
+            self.assertIn("device_health", json.loads(report))
+        dialog.reject()
+        dialog.deleteLater()
+
+    def test_rollback_is_not_launched_from_source_or_portable(self):
+        with (
+            patch("subprocess.Popen") as launch,
+            patch("room_brightness.experience_ui.QMessageBox.information"),
+        ):
+            self.window.rollback_installed()
+            launch.assert_not_called()
+
+    def test_trial_revert_during_lock_keeps_manual_override_detection(self):
+        import copy
+        from room_brightness.adaptive import AdaptiveController
+
+        candidate = copy.deepcopy(self.engine.preferences)
+        candidate["low"] = 22
+        self.engine.begin_trial(candidate)
+        self.engine.original = 50
+        self.engine.controller = AdaptiveController(low=22, high=80, expected=70)
+        self.engine.pause_reasons.add("locked")
+        self.engine.end_trial(False)
+        self.assertEqual(self.engine.controller.expected, 70)
+        self.assertEqual(self.engine.low.get(), 10)
+        with (
+            patch.object(self.engine, "work", side_effect=lambda f, d, o: d(f())),
+            patch("room_brightness.ui.brightness", return_value=65),
+            patch("room_brightness.ui.set_checked") as write,
+        ):
+            self.engine.session_pause("locked", False)
+            write.assert_not_called()
+        self.assertIsNone(self.engine.original)
+
+    def test_quick_panel_reuses_one_window_and_refreshes_language(self):
+        self.window.quick_panel()
+        first = self.window.quick_window
+        first.reject()
+        self.window.quick_panel()
+        self.assertIs(self.window.quick_window, first)
+        self.assertTrue(first.timer.isActive())
+        first.reject()
+        self.window.change_language("ar")
+        self.window.quick_panel()
+        self.assertIsNot(self.window.quick_window, first)
+        self.window.quick_window.reject()

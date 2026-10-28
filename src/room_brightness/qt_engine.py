@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QMessageBox
 
 from . import ui, startup
 from .lifecycle import Lifecycle
+from .experience import Experience, effective_curve
 from .paths import DATA_DIR
 from .settings import load_settings, resolve_language, resolve_theme
 from .widgets import PALETTES
@@ -70,7 +71,7 @@ class Scheduler(QObject):
             self.after_cancel(key)
 
 
-class Engine(Lifecycle, ui.App):
+class Engine(Experience, Lifecycle, ui.App):
     """Share tested control methods without creating a Tcl/Tk interpreter."""
 
     def __init__(self, scheduler, discover=True, directory=None):
@@ -185,6 +186,8 @@ class Engine(Lifecycle, ui.App):
             camera_index=self.camera.get(),
             camera_name=device["name"] if device else self.preferences["camera_name"],
         )
+        if self.trial_original is not None:
+            return True
         try:
             if hasattr(self, "settings_undo"):
                 self.save_camera_options()
@@ -231,6 +234,9 @@ class Engine(Lifecycle, ui.App):
             self.power_mode = "ac"
         if self.controller:
             self.controller.options = dict(self.preferences)
+            curve = effective_curve(self.preferences, self.power_mode)
+            self.controller.image_curve = curve["curve"]
+            self.controller.options["custom_points"] = copy.deepcopy(curve["points"])
             if self.preferences["power_profiles"]:
                 self.controller.low, self.controller.high = self.preferences[
                     self.power_mode + "_limits"
@@ -336,6 +342,9 @@ class Engine(Lifecycle, ui.App):
         self.session_pause("timed", False)
 
     def stop(self):
+        if self.trial_original is not None and not self.trial_ending:
+            self.end_trial(False)
+            return
         self.run_requested = False
         self.startup_resume_pending = False
         self.pause_until_ac = False
@@ -388,6 +397,8 @@ class Engine(Lifecycle, ui.App):
         self.work(list_displays, lambda displays: setattr(self, "displays", displays), "displays")
 
     def select_display(self, identity):
+        if self.trial_original is not None:
+            raise ValueError("Finish the temporary trial first.")
         if self.running or self.busy or self.resume_pending:
             raise ValueError("Stop automatic mode before changing settings.")
         from . import monitors
@@ -420,6 +431,8 @@ class Engine(Lifecycle, ui.App):
         self.persist()
 
     def apply_preferences(self, settings):
+        if self.trial_original is not None and not self.trial_transition:
+            raise ValueError("Finish the temporary trial first.")
         if self.running or self.busy or self.resume_pending:
             raise ValueError("Stop automatic mode before changing settings.")
         from .settings import validate, save_settings
@@ -438,14 +451,16 @@ class Engine(Lifecycle, ui.App):
                 key: copy.deepcopy(candidate[key]) for key in CAMERA_KEYS
             }
         try:
-            save_settings(self.directory, candidate)
+            if not self.trial_transition:
+                save_settings(self.directory, candidate)
         except OSError as error:
             self.error_details = str(error)
             self.health_events.append(
                 {"time": time.monotonic(), "category": "settings_write_failed"}
             )
             raise ValueError("Could not save settings. Check folder permissions.") from error
-        self.record_options(candidate)
+        if not self.trial_transition:
+            self.record_options(candidate)
         self.preferences = candidate
         self.save_camera_options()
         for key, var in (

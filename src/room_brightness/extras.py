@@ -5,6 +5,9 @@ import copy
 import re
 
 PORTABLE_KEYS = (
+    "cover_guard",
+    "separate_power_curves",
+    "power_curves",
     "resume_automatic",
     "reduce_motion",
     "update_checks",

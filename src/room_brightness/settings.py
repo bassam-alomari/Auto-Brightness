@@ -9,6 +9,12 @@ from .i18n import LANGUAGES
 from .themes import THEME_NAMES
 
 DEFAULTS = {
+    "cover_guard": True,
+    "separate_power_curves": False,
+    "power_curves": {
+        mode: {"curve": "custom", "points": [[12, 0], [15, 50], [20, 70], [25, 90], [27, 100]]}
+        for mode in ("ac", "battery")
+    },
     "resume_automatic": False,
     "resume_was_running": False,
     "reduce_motion": False,
@@ -117,6 +123,8 @@ def validate(raw):
     from .extras import valid_region, PROFILE_KEYS
 
     for key in (
+        "cover_guard",
+        "separate_power_curves",
         "resume_automatic",
         "resume_was_running",
         "reduce_motion",
@@ -192,6 +200,19 @@ def validate(raw):
             result[key] = limits[:]
     from .adaptive import CURVES
 
+    power = raw.get("power_curves", {})
+    if isinstance(power, dict):
+        for mode in ("ac", "battery"):
+            profile = power.get(mode)
+            if (
+                isinstance(profile, dict)
+                and profile.get("curve") in CURVES
+                and valid_points(profile.get("points"))
+            ):
+                result["power_curves"][mode] = {
+                    "curve": profile["curve"],
+                    "points": [list(point) for point in profile["points"]],
+                }
     if raw.get("brightness_curve") in CURVES:
         result["brightness_curve"] = raw["brightness_curve"]
     if raw.get("arabic_dialect") in ("msa", "jo", "eg", "gulf"):
