@@ -6,6 +6,7 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 from .brightness import brightness, set_checked, verify_control, smooth_to
+from .tuning import transition_duration
 from .camera import sample
 from .adaptive import AdaptiveController, curve_target
 from .widgets import RoundedCard, RoundedButton, PALETTES
@@ -765,7 +766,10 @@ class App:
                 self.cancel,
                 preview=self.preview_enabled,
                 region=self.preferences.get("meter_region"),
+                **({"protection": True} if self.preferences.get("spatial_protection") else {}),
             )
+            if hasattr(self, "performance"):
+                self.performance.capture(reading)
             if self.cancel.is_set():
                 return None
             if getattr(self.root, "qt_native", False):
@@ -803,9 +807,7 @@ class App:
                                     wanted,
                                     self.cancel,
                                     progress,
-                                    duration={"calm": 8, "balanced": 4, "fast": 1}[
-                                        self.preferences["transition_speed"]
-                                    ],
+                                    duration=transition_duration(self.preferences, current, wanted),
                                 )
                             else:
                                 actual, manual = smooth_to(current, wanted, self.cancel, progress)

@@ -5,6 +5,10 @@ import copy
 import re
 
 PORTABLE_KEYS = (
+    "directional_response",
+    "spatial_protection",
+    "pause_apps_enabled",
+    "pause_apps",
     "language",
     "arabic_dialect",
     "theme",

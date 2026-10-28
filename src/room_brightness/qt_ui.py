@@ -47,6 +47,7 @@ from .comfort_ui import CurveDialog, History, DIAGNOSTICS
 from .comfort import target as custom_target
 from .extras_ui import ExtrasMixin
 from .easy_ui import EasyMixin
+from .tuning_ui import TuningMixin
 from .camera import sample
 from . import __version__
 from .i18n import LANGUAGES, literal
@@ -471,7 +472,7 @@ class Curve(QWidget):
             painter.drawText(rect, flags | align | direction, caption)
 
 
-class Window(EasyMixin, ExtrasMixin, QWidget):
+class Window(TuningMixin, EasyMixin, ExtrasMixin, QWidget):
     def __init__(self, root, engine):
         super().__init__()
         self.root, self.engine = root, engine
@@ -978,6 +979,7 @@ class Window(EasyMixin, ExtrasMixin, QWidget):
                 )
             )
         )
+        self.tuning_settings(left)
         self.extras_settings(left)
         left.addStretch()
         self.comfort_settings(right)
@@ -1459,6 +1461,7 @@ class Window(EasyMixin, ExtrasMixin, QWidget):
 
             def done(result):
                 m, current = result
+                e.performance.capture(m)
                 e.display_value.set(str(current))
                 e.last_meter = dict(
                     level=m["level"],
@@ -1487,6 +1490,7 @@ class Window(EasyMixin, ExtrasMixin, QWidget):
                         e.cancel,
                         preview=e.preview_enabled,
                         region=e.preferences["meter_region"],
+                        **({"protection": True} if e.preferences.get("spatial_protection") else {}),
                     ),
                     brightness(),
                 ),

@@ -8,7 +8,7 @@ class Installer {
  [STAThread] static void Main() {
   Application.EnableVisualStyles();
   string root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Programs","AutoBrightness");
-  if(MessageBox.Show("Install Auto Brightness 0.5.0 for your Windows account?\n\nClose Auto Brightness using Exit before continuing.\n\n"+root,"Auto Brightness Setup",MessageBoxButtons.OKCancel,MessageBoxIcon.Information)!=DialogResult.OK)return;
+  if(MessageBox.Show("Install Auto Brightness 0.6.0 for your Windows account?\n\nClose Auto Brightness using Exit before continuing.\n\n"+root,"Auto Brightness Setup",MessageBoxButtons.OKCancel,MessageBoxIcon.Information)!=DialogResult.OK)return;
   string staging=Path.Combine(Path.GetTempPath(),"AutoBrightness-"+Guid.NewGuid().ToString("N"));
   try {
    Directory.CreateDirectory(staging);

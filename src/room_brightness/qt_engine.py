@@ -81,6 +81,10 @@ class Engine(ui.App):
         self.operation = ""
         self.original = self.controller = self.timer = self.save_timer = None
         self.screen_timer = self.discovery_timer = None
+        from .tuning import Performance
+
+        self.performance = Performance()
+        self.last_foreground_check = 0
         self.preferences = load_settings(self.directory)
         self.language = resolve_language(self.preferences["language"])
         self.theme = resolve_theme(self.preferences["theme"])
@@ -242,7 +246,13 @@ class Engine(ui.App):
                 if timer is not None:
                     self.root.after_cancel(timer)
                     setattr(self, key, None)
-            self.diagnostic = "timed_paused" if reason == "timed" else "paused"
+            self.diagnostic = (
+                "app_paused"
+                if reason == "application"
+                else "timed_paused"
+                if reason == "timed"
+                else "paused"
+            )
             self.status_title.set(self.t("stopped"))
             self.status.set(
                 (
@@ -274,10 +284,6 @@ class Engine(ui.App):
         self.resume_expected = self.controller.expected if self.controller else None
         self.verify(start_after=True)
         self.resume_original = old
-
-    def start(self):
-        if not self.pause_reasons:
-            super().start()
 
     def pause_for(self, minutes):
         if minutes not in (15, 30, 60):
@@ -515,6 +521,14 @@ class Engine(ui.App):
         pass
 
     def render_status(self):
+        if "application" in self.pause_reasons:
+            self.status_title.set(self.t("stopped"))
+            self.status.set(
+                "متوقف مؤقتًا بسبب التطبيق الأمامي المحدد؛ السطوع ثابت."
+                if self.language == "ar"
+                else "Paused for selected foreground app; brightness is held."
+            )
+            return
         if "timed" in self.pause_reasons:
             self.status_title.set(self.t("stopped"))
             self.status.set(
@@ -602,3 +616,30 @@ class Engine(ui.App):
         candidate["brightness_curve"] = "custom"
         self.apply_preferences(candidate)
         self.manual_offer = None
+
+    def sync_environment(self):
+        self.check_foreground()
+        super().sync_environment()
+
+    def check_foreground(self):
+        from .tuning import foreground_app
+
+        configured = self.preferences["pause_apps"]
+        if not self.preferences["pause_apps_enabled"] or not configured:
+            active = False
+        else:
+            try:
+                name = foreground_app()
+            except OSError:
+                name = None
+            if name is None:
+                return  # Transient activation/access failure must not unpause a known match.
+            active = name in configured
+        if active != ("application" in self.pause_reasons):
+            self.session_pause("application", active)
+            self.render_status()
+
+    def start(self):
+        self.check_foreground()
+        if not self.pause_reasons:
+            super().start()

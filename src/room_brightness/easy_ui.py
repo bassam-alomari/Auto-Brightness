@@ -241,6 +241,11 @@ class EasyMixin:
         e = self.engine
         if "timed" in e.pause_reasons:
             return self.tr("Automatic mode is temporarily paused.", "الوضع التلقائي متوقف مؤقتًا.")
+        if "application" in e.pause_reasons:
+            return self.tr(
+                "Paused for your selected foreground app; brightness is held.",
+                "متوقف مؤقتًا بسبب التطبيق الأمامي المحدد؛ السطوع ثابت.",
+            )
         if e.pause_reasons:
             return self.tr(*DIAGNOSTICS["paused"])
         if e.controller and time.monotonic() < e.controller.hold_until:

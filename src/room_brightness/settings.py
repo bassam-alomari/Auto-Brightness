@@ -9,6 +9,10 @@ from .i18n import LANGUAGES
 from .themes import THEME_NAMES
 
 DEFAULTS = {
+    "directional_response": False,
+    "spatial_protection": False,
+    "pause_apps_enabled": False,
+    "pause_apps": [],
     "onboarding_done": False,
     "meter_region": [0, 0, 1, 1],
     "adaptive_sampling": False,
@@ -106,12 +110,22 @@ def validate(raw):
         return result
     from .extras import valid_region, PROFILE_KEYS
 
-    for key in ("onboarding_done", "adaptive_sampling", "shortcuts_enabled"):
+    for key in (
+        "onboarding_done",
+        "adaptive_sampling",
+        "shortcuts_enabled",
+        "directional_response",
+        "spatial_protection",
+        "pause_apps_enabled",
+    ):
         if type(raw.get(key)) is bool:
             result[key] = raw[key]
     for key in ("max_interval_ac", "max_interval_battery"):
         if type(raw.get(key)) is int and 5 <= raw[key] <= 600:
             result[key] = raw[key]
+    from .tuning import app_names
+
+    result["pause_apps"] = app_names(raw.get("pause_apps", []))
     if valid_region(raw.get("meter_region")):
         result["meter_region"] = raw["meter_region"][:]
     if isinstance(raw.get("display_target"), str) and len(raw["display_target"]) <= 1024:

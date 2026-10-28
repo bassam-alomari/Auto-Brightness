@@ -454,3 +454,123 @@ class QtInterfaceTests(unittest.TestCase):
         self.assertIn("paused", self.window.brightness_reason())
         self.engine.stop()
         self.assertFalse(self.engine.resume_pending)
+
+    def test_guided_calibration_requires_explicit_comparison_save(self):
+        from room_brightness.tuning_ui import CalibrationDialog
+        import copy
+
+        before = copy.deepcopy(self.engine.preferences)
+        dialog = CalibrationDialog(self.window)
+        dialog.show()
+        for level, value in ((15, 25), (20, 60), (25, 90)):
+            dialog.reading = level
+            dialog.input.setValue(value)
+            dialog.keep()
+        self.assertEqual(self.engine.preferences, before)
+        compare = dialog.comparison
+        self.assertEqual(compare.mapped(20, True), 60)
+        compare.save_candidate(compare.candidate)
+        self.assertEqual(self.engine.preferences["custom_points"][2], [20, 60])
+        self.assertTrue(self.engine.preferences["curve_history"])
+        dialog.deleteLater()
+
+    def test_comparison_and_performance_dialogs_do_not_touch_hardware(self):
+        from room_brightness.tuning_ui import CompareDialog, PerformanceDialog
+        import copy
+
+        before = copy.deepcopy(self.engine.preferences)
+        with (
+            patch("room_brightness.ui.set_checked") as write,
+            patch("room_brightness.camera.sample") as camera,
+        ):
+            compare = CompareDialog(self.window)
+            compare.choose(1)
+            compare.reading.setValue(22)
+            self.assertEqual(self.engine.preferences, before)
+            compare.reject()
+            performance = PerformanceDialog(self.window)
+            performance.refresh()
+            performance.reject()
+            write.assert_not_called()
+            camera.assert_not_called()
+        compare.deleteLater()
+        performance.deleteLater()
+
+    def test_application_pause_preserves_other_reasons_and_stop_cancels_resume(self):
+        from room_brightness.adaptive import AdaptiveController
+
+        self.engine.preferences.update(pause_apps_enabled=True, pause_apps=["vlc.exe"])
+        self.engine.running = True
+        self.engine.controller = AdaptiveController(low=10, high=80, expected=70)
+        with patch("room_brightness.tuning.foreground_app", return_value="vlc.exe"):
+            self.engine.check_foreground()
+        self.assertIn("application", self.engine.pause_reasons)
+        self.assertFalse(self.engine.running)
+        self.assertTrue(self.engine.resume_pending)
+        self.engine.pause_reasons.add("locked")
+        with patch("room_brightness.tuning.foreground_app", return_value=None):
+            self.engine.check_foreground()
+        self.assertIn("application", self.engine.pause_reasons)
+        with (
+            patch("room_brightness.tuning.foreground_app", return_value="explorer.exe"),
+            patch.object(self.engine, "verify") as verify,
+        ):
+            self.engine.check_foreground()
+            verify.assert_not_called()
+            self.assertNotIn("application", self.engine.pause_reasons)
+            self.engine.stop()
+            self.assertFalse(self.engine.resume_pending)
+            self.engine.session_pause("locked", False)
+            verify.assert_not_called()
+
+    def test_compatibility_read_only_and_restoration_paths(self):
+        from room_brightness.tuning_ui import CompatibilityDialog
+
+        dialog = CompatibilityDialog(self.window)
+
+        def immediate(function, done, operation):
+            done(function())
+
+        with (
+            patch.object(self.engine, "work", side_effect=immediate),
+            patch("room_brightness.brightness.brightness", return_value=60),
+            patch(
+                "room_brightness.camera.sample", return_value=dict(level=20, confidence=0.9)
+            ) as camera,
+            patch("room_brightness.brightness.verify_control") as control,
+        ):
+            dialog.run(False)
+            camera.assert_called_once()
+            control.assert_not_called()
+            self.assertIn("Passed", dialog.results.text())
+            dialog.run(True)
+            control.assert_called_once()
+        with (
+            patch.object(self.engine, "work", side_effect=immediate),
+            patch(
+                "room_brightness.brightness.verify_control",
+                side_effect=RuntimeError("Could not confirm restoration"),
+            ),
+        ):
+            dialog.run(True)
+            self.assertIn("restore brightness manually", dialog.results.text())
+        dialog.reject()
+        dialog.deleteLater()
+
+    def test_calibration_capture_failure_is_local_and_retryable(self):
+        from room_brightness.tuning_ui import CalibrationDialog
+
+        dialog = CalibrationDialog(self.window)
+        dialog.show()
+        with (
+            patch.object(self.engine, "work", side_effect=lambda f, d, o: d(f())),
+            patch("room_brightness.camera.sample", side_effect=RuntimeError("busy")),
+            patch("room_brightness.brightness.verify_control") as control,
+        ):
+            dialog.capture()
+            self.assertIsNone(dialog.reading)
+            self.assertTrue(dialog.capture_button.isEnabled())
+            self.assertIn("failed", dialog.feedback.text())
+            control.assert_not_called()
+        dialog.reject()
+        dialog.deleteLater()

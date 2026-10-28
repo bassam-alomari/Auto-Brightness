@@ -1,3 +1,13 @@
+# 0.6.0
+
+- Add a three-reading guided calibration with monotonic curve validation, dry comparison and explicit transactional Save; preserve curve undo.
+- Add optional spatial rejection of the central image and isolated extreme tiles, with excluded areas darkened in requested previews. This is a heuristic, not face recognition or calibrated lux.
+- Add optional directional transitions: brighten in 1s, dim in 8s; retain stability confirmation, limits and manual priority.
+- Add opt-in foreground-executable pause rules using basenames only. Preserve lock/sleep/timed reasons and Stop cancellation. Poll at the existing 1.5s environment interval; access failures retain a known pause.
+- Compare current and proposed preset/calibrated curves with the same simulated reading before saving, without camera/display writes.
+- Add separate read-only camera/display compatibility checks and an explicit reversible display-control test, with restoration failures called out.
+- Add bounded in-memory app CPU/working-set and completed-camera capture time/CPU counters. Limit expensive frame analysis to at most one per 150ms while retaining warmup/capture budgets; no preview encoding unless requested.
+
 # 0.5.0
 
 - Offer an explicit save-to-curve action after a successful manual adjustment with a reliable light reading less than one minute old. Expire stale suggestions and preserve curve validation and undo history.

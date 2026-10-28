@@ -9,7 +9,7 @@ import threading
 import time
 
 
-def camera_sample(index: int, preview=False, region=None) -> dict:
+def camera_sample(index: int, preview=False, region=None, protection=False) -> dict:
     from .extras import valid_region
 
     region = [0, 0, 1, 1] if region is None else list(region)
@@ -19,6 +19,8 @@ def camera_sample(index: int, preview=False, region=None) -> dict:
     from .metering import analyze_frame, combine_frames
     from .vision import scene_features, vision_score
 
+    opened_at = time.monotonic()
+    cpu_started = time.process_time()
     cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
     try:
         if not cap.isOpened():
@@ -29,17 +31,24 @@ def camera_sample(index: int, preview=False, region=None) -> dict:
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
         started = time.monotonic()
         values = []
+        next_analysis = started + 1.5
         while time.monotonic() - started < 3:
             ok, frame = cap.read()
             if not ok:
                 raise RuntimeError("Could not read a camera frame.")
-            if time.monotonic() - started >= 1.5:
+            if time.monotonic() >= next_analysis:
+                next_analysis = time.monotonic() + 0.15
                 if frame.shape[0] > 240 or frame.shape[1] > 320:
                     frame = cv2.resize(frame, (320, 240), interpolation=cv2.INTER_AREA)
                 full_frame = frame
                 from .extras import crop_frame
 
                 frame = crop_frame(frame, region)
+                mask = None
+                if protection:
+                    from .tuning import protected_frame
+
+                    frame, mask = protected_frame(frame)
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 exposure = cap.get(cv2.CAP_PROP_EXPOSURE)
                 features = scene_features(frame)
@@ -61,7 +70,15 @@ def camera_sample(index: int, preview=False, region=None) -> dict:
         reading["visible_fraction"] = values[-1]["visible_fraction"]
         gain = cap.get(cv2.CAP_PROP_GAIN)
         reading["gain"] = gain if math.isfinite(gain) and gain >= 0 else None
+        reading["camera_seconds"] = time.monotonic() - opened_at
+        reading["camera_cpu"] = time.process_time() - cpu_started
         if preview:
+            if protection and mask is not None:
+                from .extras import crop_frame
+
+                full_frame = full_frame.copy()
+                shown = crop_frame(full_frame, region)
+                shown[~mask] = (shown[~mask] * 0.25).astype(shown.dtype)
             thumb = cv2.resize(full_frame, (240, 180), interpolation=cv2.INTER_AREA)
             encoded, png = cv2.imencode(".png", thumb)
             if encoded:
@@ -72,7 +89,12 @@ def camera_sample(index: int, preview=False, region=None) -> dict:
 
 
 def sample(
-    index: int, cancel: threading.Event, timeout: float = 15, preview=False, region=None
+    index: int,
+    cancel: threading.Event,
+    timeout: float = 15,
+    preview=False,
+    region=None,
+    protection=False,
 ) -> dict:
     if cancel.is_set():
         raise RuntimeError("Stopped.")
@@ -81,6 +103,7 @@ def sample(
         + ([] if getattr(sys, "frozen", False) else ["-m", "room_brightness"])
         + ["--meter", str(index)]
         + (["--preview"] if preview else [])
+        + (["--protection"] if protection else [])
         + (["--region", ",".join(str(v) for v in region)] if region is not None else []),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
