@@ -188,6 +188,10 @@ class History(QWidget):
 
 
 DIAGNOSTICS = {
+    "device_wait": (
+        "Waiting for the selected device to reconnect",
+        "بانتظار إعادة توصيل الجهاز المحدد",
+    ),
     "camera_retry": (
         "Camera busy or disconnected; retrying quietly",
         "الكاميرا مشغولة أو مفصولة؛ تُعاد المحاولة تلقائيًا",

@@ -574,3 +574,172 @@ class QtInterfaceTests(unittest.TestCase):
             control.assert_not_called()
         dialog.reject()
         dialog.deleteLater()
+
+    def test_camera_preferences_are_independent_and_persisted(self):
+        from room_brightness.settings import load_settings
+
+        first = self.device
+        second = dict(index=1, id="second-camera", name="Second camera")
+        self.engine.devices = [first, second]
+        self.engine.preferences["meter_region"] = [0, 0.1, 0.8, 0.9]
+        self.engine.preferences["spatial_protection"] = True
+        self.engine.persist()
+        self.engine.choose_device(second)
+        self.engine.preferences["meter_region"] = [0.2, 0, 1, 1]
+        self.engine.preferences["spatial_protection"] = False
+        self.engine.persist()
+        self.engine.choose_device(first)
+        self.assertEqual(self.engine.preferences["meter_region"], [0, 0.1, 0.8, 0.9])
+        self.assertTrue(self.engine.preferences["spatial_protection"])
+        saved = load_settings(Path(self.folder.name))
+        self.assertEqual(saved["camera_profiles"]["second-camera"]["meter_region"], [0.2, 0, 1, 1])
+
+    def test_general_settings_undo_persists_and_keeps_device_identity(self):
+        import copy
+
+        candidate = copy.deepcopy(self.engine.preferences)
+        candidate.update(reduce_motion=True, theme="dark")
+        before = self.engine.preferences["theme"]
+        self.engine.apply_preferences(candidate)
+        self.assertTrue(self.engine.preferences["reduce_motion"])
+        self.assertTrue(self.engine.undo_options())
+        self.assertFalse(self.engine.preferences["reduce_motion"])
+        self.assertEqual(self.engine.preferences["theme"], before)
+        self.assertEqual(self.engine.camera_id, self.device["id"])
+        with patch("room_brightness.settings.save_settings", side_effect=OSError("denied")):
+            candidate = copy.deepcopy(self.engine.preferences)
+            candidate["reduce_motion"] = True
+            count = len(self.engine.settings_undo)
+            with self.assertRaises(ValueError):
+                self.engine.apply_preferences(candidate)
+            self.assertEqual(len(self.engine.settings_undo), count)
+
+    def test_clock_pause_and_stop_cancel_all_pending_recovery(self):
+        from PySide6.QtCore import QTime
+        from room_brightness.adaptive import AdaptiveController
+
+        self.engine.running = True
+        self.engine.run_requested = True
+        self.engine.controller = AdaptiveController(low=10, high=80, expected=70)
+        self.engine.pause_until(QTime.currentTime().addSecs(3600))
+        self.assertIn("timed", self.engine.pause_reasons)
+        self.assertGreater(self.engine.pause_remaining(), 3500)
+        self.engine.pause_until_charger()
+        self.assertTrue(self.engine.pause_until_ac)
+        self.engine.stop()
+        self.assertFalse(self.engine.pause_until_ac)
+        self.assertFalse(self.engine.resume_pending)
+        self.assertFalse(self.engine.run_requested)
+
+    def test_device_recovery_requires_exact_camera_and_stop_prevents_resume(self):
+        from room_brightness.adaptive import AdaptiveController
+
+        self.engine.running = True
+        self.engine.run_requested = True
+        self.engine.controller = AdaptiveController(low=10, high=80, expected=70)
+        self.engine.wait_for_devices()
+        self.assertIn("device", self.engine.pause_reasons)
+        with (
+            patch.object(self.engine, "work", side_effect=lambda f, d, o: d(f())),
+            patch(
+                "room_brightness.ui.list_devices",
+                return_value=[dict(id="different", name="Other", index=0)],
+            ),
+            patch("room_brightness.ui.brightness") as read,
+            patch.object(self.engine, "verify") as verify,
+        ):
+            self.engine.recover_devices()
+            read.assert_not_called()
+            verify.assert_not_called()
+            self.assertTrue(self.engine.resume_pending)
+            self.engine.stop()
+            self.engine.recover_devices()
+            verify.assert_not_called()
+        self.assertIsNone(self.engine.device_retry_timer)
+
+    def test_update_options_defaults_and_reduced_motion_accessible_dialog(self):
+        from room_brightness.session_ui import SessionDialog
+        from room_brightness.qt_ui import ToggleSwitch
+
+        self.assertFalse(self.engine.preferences["resume_automatic"])
+        self.assertFalse(self.engine.preferences["auto_download_updates"])
+        self.assertTrue(self.engine.preferences["update_checks"])
+        with patch("room_brightness.updater.open_url") as network:
+            dialog = SessionDialog(self.window)
+            self.assertTrue(dialog.download_button.accessibleName())
+            self.assertTrue(dialog.notes.accessibleName())
+            network.assert_not_called()
+            dialog.reject()
+            dialog.deleteLater()
+        self.engine.preferences["reduce_motion"] = True
+        switch = ToggleSwitch("Accessible switch")
+        switch.setParent(self.window)
+        switch.show()
+        switch.setChecked(True)
+        self.assertEqual(switch.position, 1)
+        self.assertEqual(switch.animation.state(), switch.animation.State.Stopped)
+        switch.deleteLater()
+
+    def test_startup_resume_opt_in_and_daily_checks_without_network(self):
+        self.engine.preferences.update(
+            resume_automatic=False, resume_was_running=True, onboarding_done=True
+        )
+        self.engine.init_lifecycle(True)
+        self.assertFalse(self.engine.startup_resume_pending)
+        self.engine.preferences["resume_automatic"] = True
+        self.engine.init_lifecycle(True)
+        self.assertTrue(self.engine.startup_resume_pending)
+        with (
+            patch.object(self.engine, "start") as start,
+            patch.object(self.engine.update_client, "check") as check,
+        ):
+            self.engine.lifecycle_tick()
+            start.assert_called_once()
+            check.assert_called_once()
+            self.engine.update_client.last_attempt = time.monotonic()
+            self.engine.lifecycle_tick()
+            self.assertEqual(check.call_count, 1)
+            self.engine.update_client.last_attempt = time.monotonic() - 86401
+            self.engine.lifecycle_tick()
+            self.assertEqual(check.call_count, 2)
+        with patch("room_brightness.ui.App.close"):
+            self.engine.running = True
+            self.engine.close()
+            self.assertTrue(self.engine.preferences["resume_was_running"])
+            self.assertTrue(self.engine.update_client.closed)
+
+    def test_session_dialog_widgets_belong_to_scroll_content(self):
+        from room_brightness.session_ui import SessionDialog
+        from PySide6.QtWidgets import QScrollArea
+
+        dialog = SessionDialog(self.window)
+        dialog.show()
+        self.qt.processEvents()
+        content = dialog.findChild(QScrollArea).widget()
+        self.assertIs(dialog.check_button.parentWidget(), content)
+        self.assertTrue(dialog.check_button.isVisible())
+        self.assertTrue(dialog.install_button.accessibleName())
+        dialog.reject()
+        dialog.deleteLater()
+
+    def test_restoration_failure_does_not_enter_automatic_device_retry(self):
+        self.engine.run_requested = True
+        self.engine.running = True
+        with (
+            patch.object(self.engine, "wait_for_devices") as wait,
+            patch("room_brightness.ui.App.handle_error"),
+        ):
+            self.engine.handle_error(
+                "test", "Could not confirm restoration. Restore brightness manually."
+            )
+            wait.assert_not_called()
+            self.assertFalse(self.engine.run_requested)
+
+    def test_missing_saved_camera_requires_explicit_selection_of_replacement(self):
+        replacement = dict(id="replacement", name="Replacement camera", index=0)
+        self.engine.devices = [replacement]
+        self.window.update_values()
+        self.assertEqual(self.window.cameras.currentIndex(), -1)
+        self.assertFalse(self.window.start_button.isEnabled())
+        self.window.cameras.setCurrentIndex(0)
+        self.assertEqual(self.engine.selected_device()["id"], "replacement")

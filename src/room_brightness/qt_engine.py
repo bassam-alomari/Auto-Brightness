@@ -10,6 +10,7 @@ from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QMessageBox
 
 from . import ui, startup
+from .lifecycle import Lifecycle
 from .paths import DATA_DIR
 from .settings import load_settings, resolve_language, resolve_theme
 from .widgets import PALETTES
@@ -69,7 +70,7 @@ class Scheduler(QObject):
             self.after_cancel(key)
 
 
-class Engine(ui.App):
+class Engine(Lifecycle, ui.App):
     """Share tested control methods without creating a Tcl/Tk interpreter."""
 
     def __init__(self, scheduler, discover=True, directory=None):
@@ -147,6 +148,8 @@ class Engine(ui.App):
                 self.set_status("error", "startup_error")
             self.discovery_timer = scheduler.after(100, self.refresh_cameras)
 
+        self.init_lifecycle(discover)
+
     def work(self, function, done, operation):
         def completed(result):
             resuming = operation == "test" and hasattr(self, "resume_original")
@@ -158,6 +161,9 @@ class Engine(ui.App):
                 if hasattr(self, "resume_expected"):
                     del self.resume_expected
             done(result)
+            if operation == "test" and self.running:
+                self.preferences["resume_was_running"] = True
+                self.persist()
             if manual and self.running and self.controller:
                 self.controller.hold_until = time.monotonic() + 180
                 self.controller.preferred = result
@@ -180,7 +186,11 @@ class Engine(ui.App):
             camera_name=device["name"] if device else self.preferences["camera_name"],
         )
         try:
+            if hasattr(self, "settings_undo"):
+                self.save_camera_options()
             save_settings(self.directory, self.preferences)
+            if hasattr(self, "settings_undo"):
+                self.record_options(self.preferences)
             return True
         except OSError as exc:
             self.error_details = str(exc)
@@ -290,6 +300,7 @@ class Engine(ui.App):
             raise ValueError("Invalid pause duration.")
         if not self.running and "timed" not in self.pause_reasons:
             return
+        self.pause_until_ac = False
         self.clear_pause_timer()
         self.pause_deadline = time.monotonic() + minutes * 60
         self.session_pause("timed", True)
@@ -319,11 +330,22 @@ class Engine(ui.App):
         self.pause_timer = self.root.after(1000, self.pause_tick)
 
     def resume_now(self):
+        self.pause_until_ac = False
         self.clear_pause_timer()
         self.pause_deadline = None
         self.session_pause("timed", False)
 
     def stop(self):
+        self.run_requested = False
+        self.startup_resume_pending = False
+        self.pause_until_ac = False
+        if self.device_retry_timer is not None:
+            self.root.after_cancel(self.device_retry_timer)
+            self.device_retry_timer = None
+        self.pause_reasons.discard("device")
+        if not self.exiting:
+            self.preferences["resume_was_running"] = False
+            self.persist()
         self.clear_pause_timer()
         self.pause_deadline = None
         self.pause_reasons.discard("timed")
@@ -409,6 +431,12 @@ class Engine(ui.App):
             if not history or history[-1] != points:
                 history.append(points)
         candidate["curve_history"] = history[-20:]
+        if self.camera_id:
+            from .lifecycle import CAMERA_KEYS
+
+            candidate["camera_profiles"][self.camera_id] = {
+                key: copy.deepcopy(candidate[key]) for key in CAMERA_KEYS
+            }
         try:
             save_settings(self.directory, candidate)
         except OSError as error:
@@ -417,7 +445,9 @@ class Engine(ui.App):
                 {"time": time.monotonic(), "category": "settings_write_failed"}
             )
             raise ValueError("Could not save settings. Check folder permissions.") from error
+        self.record_options(candidate)
         self.preferences = candidate
+        self.save_camera_options()
         for key, var in (
             ("low", self.low),
             ("high", self.high),
@@ -498,6 +528,24 @@ class Engine(ui.App):
         from .recovery import error_category
 
         category = error_category(operation, error)
+        if category in (
+            "permission_denied",
+            "brightness_verification_failed",
+            "brightness_restore_failed",
+        ):
+            self.run_requested = False
+        if (
+            self.run_requested
+            and category != "permission_denied"
+            and (
+                operation == "test"
+                or operation in ("observe", "control")
+                and "camera" not in str(error).lower()
+            )
+        ):
+            self.error_details = str(error)
+            self.wait_for_devices()
+            return
         self.health_events.append({"time": time.monotonic(), "category": category})
         if (
             self.running
@@ -521,6 +569,14 @@ class Engine(ui.App):
         pass
 
     def render_status(self):
+        if "device" in self.pause_reasons:
+            self.status_title.set(self.t("stopped"))
+            self.status.set(
+                "بانتظار إعادة توصيل الجهاز المحدد؛ السطوع ثابت."
+                if self.language == "ar"
+                else "Waiting for the selected device to reconnect; brightness is held."
+            )
+            return
         if "application" in self.pause_reasons:
             self.status_title.set(self.t("stopped"))
             self.status.set(
@@ -561,7 +617,11 @@ class Engine(ui.App):
                 self.camera_label.set(self.t("no_camera"))
                 self.set_status("no_camera", "no_camera_help")
                 return
-            device = next((d for d in devices if d["id"] == self.camera_id), devices[0])
+            device = next((d for d in devices if d["id"] == self.camera_id), None)
+            if device is None and self.camera_id:
+                self.camera_label.set(self.t("no_camera"))
+                return
+            device = device or devices[0]
             self.choose_device(device)
             self.set_status("auto_ready", "auto_welcome")
 
@@ -640,6 +700,7 @@ class Engine(ui.App):
             self.render_status()
 
     def start(self):
+        self.run_requested = True
         self.check_foreground()
         if not self.pause_reasons:
             super().start()

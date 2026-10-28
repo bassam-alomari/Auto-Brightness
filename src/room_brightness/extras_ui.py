@@ -471,36 +471,8 @@ class ExtrasMixin:
         self.meter_dialog.open()
 
     def update_check(self):
-        if self.update_pending:
-            return
-        from .extras import check_release
-        from . import __version__
-        import threading
-
-        self.update_pending = True
-        self.update_message = self.tr("Checking for updates…", "جارٍ البحث عن تحديثات…")
-
-        def worker():
-            try:
-                result = check_release(__version__)
-                message = (
-                    self.tr(
-                        "No newer published release was found.", "لم يُعثر على إصدار منشور أحدث."
-                    )
-                    if result is None
-                    else self.tr("New release available: ", "يتوفر إصدار جديد: ")
-                    + result["version"]
-                )
-                self.pending_update = result
-            except Exception:
-                message = self.tr(
-                    "Could not check updates. Try again later.",
-                    "تعذّر البحث عن تحديثات. حاول لاحقًا.",
-                )
-            self.update_message = message
-            self.update_pending = False
-
-        threading.Thread(target=worker, daemon=True).start()
+        self.session_dialog()
+        self.session_window.check()
 
     def open_update(self):
         from PySide6.QtGui import QDesktopServices

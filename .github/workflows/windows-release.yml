@@ -8,12 +8,17 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
-      - run: python -m pip install -e ".[windows-build]"
+      - run: python -m pip install -e ".[windows-build,dev]"
+      - run: python -m ruff check src tests
+      - run: python -m ruff format --check src tests
+      - run: python -m unittest discover -s tests -q
       - run: python packaging/build_windows.py
       - uses: actions/upload-artifact@v4
         with:
@@ -21,3 +26,19 @@ jobs:
           path: |
             dist/AutoBrightness-*-Setup.exe
             dist/AutoBrightness-*-portable.zip
+      - name: Publish tagged release with Windows downloads
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release view $env:GITHUB_REF_NAME *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:GITHUB_REF_NAME --verify-tag --generate-notes --title "Auto Brightness $env:GITHUB_REF_NAME"
+            if ($LASTEXITCODE -ne 0) { throw 'Release creation failed' }
+          }
+          $assets = Get-ChildItem -LiteralPath dist -File | Where-Object { $_.Name -match '^AutoBrightness-.*-(Setup\.exe|portable\.zip)$' }
+          foreach ($asset in $assets) {
+            gh release upload $env:GITHUB_REF_NAME $asset.FullName --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
+          }

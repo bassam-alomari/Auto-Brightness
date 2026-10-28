@@ -48,6 +48,7 @@ from .comfort import target as custom_target
 from .extras_ui import ExtrasMixin
 from .easy_ui import EasyMixin
 from .tuning_ui import TuningMixin
+from .session_ui import SessionMixin, accessible_widgets
 from .camera import sample
 from . import __version__
 from .i18n import LANGUAGES, literal
@@ -92,7 +93,12 @@ class ToggleSwitch(QCheckBox):
 
     def transition(self, checked):
         self.animation.stop()
-        if not self.isVisible():
+        owner = getattr(self.window(), "engine", None)
+        if (
+            not self.isVisible()
+            or owner is not None
+            and owner.preferences.get("reduce_motion", False)
+        ):
             self.position = float(checked)
             self.update()
             return
@@ -472,7 +478,7 @@ class Curve(QWidget):
             painter.drawText(rect, flags | align | direction, caption)
 
 
-class Window(TuningMixin, EasyMixin, ExtrasMixin, QWidget):
+class Window(SessionMixin, TuningMixin, EasyMixin, ExtrasMixin, QWidget):
     def __init__(self, root, engine):
         super().__init__()
         self.root, self.engine = root, engine
@@ -714,6 +720,7 @@ class Window(TuningMixin, EasyMixin, ExtrasMixin, QWidget):
         self.update()
         self.update_tray_menu()
         self.configure_shortcuts()
+        accessible_widgets(self)
 
     def home(self, panels):
         e = self.engine
@@ -721,6 +728,10 @@ class Window(TuningMixin, EasyMixin, ExtrasMixin, QWidget):
         left.addWidget(self.label(e.t("automatic"), True))
         self.mode_label = self.label("")
         left.addWidget(self.mode_label)
+        session_button = QPushButton(self.tr("Session and updates", "الجلسة والتحديثات"))
+        self.session_home_button = session_button
+        session_button.clicked.connect(self.session_dialog)
+        left.addWidget(session_button)
         left.addWidget(self.label(e.t("screen_level")))
         self.metric_label = QLabel("—%")
         self.metric_label.setObjectName("metric")
@@ -979,6 +990,9 @@ class Window(TuningMixin, EasyMixin, ExtrasMixin, QWidget):
                 )
             )
         )
+        session_button = QPushButton(self.tr("Session and updates", "الجلسة والتحديثات"))
+        session_button.clicked.connect(self.session_dialog)
+        left.addWidget(session_button)
         self.tuning_settings(left)
         self.extras_settings(left)
         left.addStretch()
@@ -1118,6 +1132,12 @@ class Window(TuningMixin, EasyMixin, ExtrasMixin, QWidget):
         self.status_text.setText(e.status.get())
         self.reason_text.setText(self.brightness_reason())
         if self.page == "home":
+            release = e.update_client.release
+            self.session_home_button.setText(
+                self.tr("Update available: ", "يتوفر تحديث: ") + release["version"]
+                if release
+                else self.tr("Session and updates", "الجلسة والتحديثات")
+            )
             self.save_manual_button.setVisible(e.manual_offer_available())
             self.metric_label.setText(e.display_value.get() + "%")
             mode = (
@@ -1139,7 +1159,7 @@ class Window(TuningMixin, EasyMixin, ExtrasMixin, QWidget):
                 else self.tr("Measure only (brightness unchanged)", "قياس فقط (بدون تغيير السطوع)")
             )
             self.start_button.setEnabled(
-                not e.running and not e.busy and not e.pause_reasons and bool(e.devices)
+                not e.running and not e.busy and not e.pause_reasons and bool(e.selected_device())
             )
             timed = "timed" in e.pause_reasons
             self.pause_combo.setEnabled(e.running or timed)
@@ -1153,6 +1173,10 @@ class Window(TuningMixin, EasyMixin, ExtrasMixin, QWidget):
                 )
                 self.mode_label.setText(self.tr("AUTOMATIC PAUSED", "السطوع التلقائي متوقف مؤقتًا"))
             self.stop_button.setEnabled(e.running or e.busy or e.resume_pending)
+            if e.pause_until_ac:
+                self.pause_countdown.setText(
+                    self.tr("Resumes when charger connects", "يُستأنف عند توصيل الشاحن")
+                )
             self.manual_button.setEnabled(not e.running and not e.busy)
             self.manual_slider.setEnabled(not e.running and not e.busy)
             self.refresh_button.setEnabled(not e.running and not e.busy)
@@ -1166,6 +1190,8 @@ class Window(TuningMixin, EasyMixin, ExtrasMixin, QWidget):
                 device = e.selected_device()
                 if device:
                     self.cameras.setCurrentIndex(e.devices.index(device))
+                else:
+                    self.cameras.setCurrentIndex(-1)
                 self.cameras.blockSignals(False)
             m = e.last_meter
             if m:
@@ -1219,6 +1245,13 @@ class Window(TuningMixin, EasyMixin, ExtrasMixin, QWidget):
         self.update_values()
         self.maybe_wizard()
         if self.page == "settings":
+            client = self.engine.update_client
+            self.pending_update = client.release
+            self.update_message = (
+                self.tr("New release: ", "إصدار جديد: ") + client.release["version"]
+                if client.release
+                else self.tr("Current version: ", "الإصدار الحالي: ") + __version__
+            )
             self.update_label.setText(self.update_message)
             self.update_link.setEnabled(bool(self.pending_update))
         if self.page == "home":
@@ -1641,6 +1674,7 @@ class Window(TuningMixin, EasyMixin, ExtrasMixin, QWidget):
     def exit_app(self):
         if not self.closing:
             self.closing = True
+            self.engine.exit_running_intent = self.engine.running or self.engine.resume_pending
             self.engine.resume_pending = False
             for key in self.shortcut_keys:
                 ctypes.windll.user32.UnregisterHotKey(ctypes.c_void_p(int(self.winId())), key)

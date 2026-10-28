@@ -1,3 +1,15 @@
+# 0.7.0
+
+- Add default-on checks at normal launch and daily, opt-in automatic download, version/release-note UI, progress/cancel, and explicit install/restart. Only this repository's stable Windows installer asset is accepted, with bounded HTTPS redirects, declared size, PE header and GitHub-provided SHA-256 checks. Recheck the file immediately before launch; failed downloads leave the current app intact.
+- Stage installer files on the destination volume, wait for the requesting process to exit, preserve personal data outside the app directory, and attempt directory rollback on installation/registration failure. Actual installer replacement is not exercised by mocked unit tests.
+- Publish Windows downloads to tagged GitHub Releases after passing checks/build; require repository Actions write permission.
+- Add opt-in remembered automatic operation after launch/sign-in, requiring completed setup and exact camera discovery. Default remains manual Start for camera access. Explicit Stop cancels future continuation.
+- Save up to twenty per-camera curve/metering profiles. Do not silently select another camera when a saved identity disappears.
+- Wait for the selected display/camera on recoverable display failures and retry read-only discovery every ten seconds; reverify before resuming and respect other pause reasons and Stop. Existing camera-contention retry remains in place.
+- Add pause until the next occurrence of a chosen local time, or until AC power is detected. Other pause reasons still block resume.
+- Add twenty session-local undo steps for successfully saved portable preferences, preserving device/startup identity; keep curve undo and backup recovery.
+- Name standard controls for accessibility, associate nearby labels and support keyboard focus; add opt-in reduced switch motion and prevent wheel edits in the time picker.
+
 # 0.6.0
 
 - Add a three-reading guided calibration with monotonic curve validation, dry comparison and explicit transactional Save; preserve curve undo.

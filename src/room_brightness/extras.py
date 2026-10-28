@@ -5,6 +5,10 @@ import copy
 import re
 
 PORTABLE_KEYS = (
+    "resume_automatic",
+    "reduce_motion",
+    "update_checks",
+    "auto_download_updates",
     "directional_response",
     "spatial_protection",
     "pause_apps_enabled",
@@ -38,7 +42,18 @@ PROFILE_KEYS = tuple(
     key
     for key in PORTABLE_KEYS
     if key
-    not in ("profiles", "language", "arabic_dialect", "theme", "glass_tint", "shortcuts_enabled")
+    not in (
+        "profiles",
+        "language",
+        "arabic_dialect",
+        "theme",
+        "glass_tint",
+        "shortcuts_enabled",
+        "resume_automatic",
+        "reduce_motion",
+        "update_checks",
+        "auto_download_updates",
+    )
 )
 
 

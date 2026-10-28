@@ -54,7 +54,7 @@ The camera is cancelled on Windows lock/suspend and restarted after unlock/resum
 
 ## Standalone installation
 
-Download `AutoBrightness-0.6.0-Setup.exe` from the release assets, close any running copy using Exit, and run the installer. It installs under your current account without Python or administrator privileges and creates Desktop and Start menu shortcuts. Remove it through Windows Installed apps; personal preferences are preserved. A portable ZIP is also available: extract it and open `AutoBrightness.exe`.
+Download `AutoBrightness-0.7.0-Setup.exe` from the release assets, close any running copy using Exit, and run the installer. It installs under your current account without Python or administrator privileges and creates Desktop and Start menu shortcuts. Remove it through Windows Installed apps; personal preferences are preserved. A portable ZIP is also available: extract it and open `AutoBrightness.exe`.
 
 For developers: `python -m pip install -e ".[windows-build]"` then `python packaging/build_windows.py` on Windows with Python 3.12 x64 builds both packages. The Windows installer workflow also builds them when run manually or on a version tag.
 
@@ -109,3 +109,24 @@ Open Settings → Calibration and measurement. All new measurement/response/paus
 - **App pauses:** opt in and enter up to 30 executable basenames (e.g. vlc.exe), one per line. Pause applies while a listed desktop app is in the foreground, checked at 1.5-second intervals; it does not detect video playback or games automatically. Only configured basenames are saved, no titles or use history. A failed foreground query holds the existing pause; other pause reasons and Stop take priority. Disable/clear the rules to remove an application pause. No elevated access is requested.
 - **Compatibility:** camera/read check opens the selected camera and reads brightness without writing it. The separate control test explicitly changes by five points and attempts restoration in finally; heed any restoration failure and restore manually. Automatic mode must be stopped. Mock tests do not certify your camera/monitor.
 - **Resource usage:** live app process CPU (per logical core, not normalized across cores) and working-set memory, plus cumulative time/CPU from completed camera captures. Failed captures and unrelated child-process work are excluded. Values remain in a bounded in-memory session buffer. Frame analysis is throttled to 150ms with the existing 1.5s warmup and 3s camera budget. Use Adaptive sampling for fewer bursts; actual resource savings depend on hardware.
+
+## Sessions, devices and updates (0.7.0)
+
+Open **Session and updates** from Home or Settings. Stop automatic mode before saving options, undoing preferences or installing.
+
+- Optional remembered automatic mode starts the camera after a normal relaunch/sign-in only when it was previously running and initial setup is complete. This is off by default. Explicit Stop clears continuation; closing via Exit preserves the last intent. Saved camera identity is required; no fallback camera is silently used. Camera/Windows permissions still apply.
+- Camera selection remembers each camera's custom curve, preset, metering region and spatial protection (up to twenty identities). First use of a new camera inherits current options. Profiles remain local and are not exported with portable settings.
+- Recoverable display-control failures pause rather than switch targets. Exact camera/display discovery plus brightness readback is retried every ten seconds, then the normal reversible control verification runs before automatic mode resumes. Stop cancels recovery and all pending resume. Permission errors do not retry automatically; driver faults may still require manual repair.
+- Pause until a selected local HH:mm (next 24 hours, tracked by monotonic countdown) or AC connection (checked every two seconds). If AC is already connected, the condition is immediately satisfied on the next check. Lock/sleep/application pauses must also clear. These pauses are session-local, not persisted across a restart.
+- Undo covers up to twenty successful portable-preference changes in the current session. It leaves camera/display identity and sign-in registration untouched. Curve undo and saved backup restoration are still separate options.
+- Reduce motion disables switch animations. Standard Qt controls have accessible names/buddies and keyboard focus; the time picker ignores wheel edits. Accessibility is validated through control properties/keyboard behavior, not a full screen-reader certification.
+
+### Integrated updater
+
+Normal desktop launch checks GitHub once, then every 24 hours while open. Disable **Check on opening and daily** for manual checks only. Automatic download starts **off** and never installs automatically. No camera frames/settings are sent to GitHub; the normal HTTPS request reveals the client's network address to GitHub. Tests and smoke checks do not make update requests.
+
+The version must be a newer stable published GitHub Release in `bassam-alomari/Auto-Brightness`, with an asset named `AutoBrightness-X.Y.Z-Setup.exe`, a positive size at most 300 MiB, and GitHub's `sha256:` asset digest. Missing/unverifiable installers remain visible but cannot be downloaded in-app. Only GitHub and its allowed release-asset HTTPS hosts may be followed. Downloads have bounded time/size, a cancel option, a partial temporary file, PE-header and size/hash checks, and atomic promotion only on success. Matching cached downloads are verified and reused. The checksum protects transfer integrity; this is not publisher code signing.
+
+**Install and restart** requires stopped/idle operation, verifies the file again, opens the per-user installer and exits the app normally. The installer asks for confirmation, waits up to two minutes for the previous process, stages files, swaps the app folder and attempts rollback on failure. Settings in LocalAppData/RoomBrightness are preserved. A source/portable user who installs the update moves to the standard installed application; the source checkout is not rewritten. Existing sign-in registration is pointed to the installed executable, preserving opt-outs. Full installation/rollback still depends on Windows file permissions and is not physically exercised by development tests.
+
+Pushing a version tag now runs tests/build and creates or updates that tag's GitHub Release with installer/portable assets. A failed build publishes no new installer. The workflow needs repository Actions permission to write contents. Older releases are kept; simply pushing code without a tag does not publish an update.

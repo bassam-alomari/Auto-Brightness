@@ -9,6 +9,12 @@ from .i18n import LANGUAGES
 from .themes import THEME_NAMES
 
 DEFAULTS = {
+    "resume_automatic": False,
+    "resume_was_running": False,
+    "reduce_motion": False,
+    "update_checks": True,
+    "auto_download_updates": False,
+    "camera_profiles": {},
     "directional_response": False,
     "spatial_protection": False,
     "pause_apps_enabled": False,
@@ -111,6 +117,11 @@ def validate(raw):
     from .extras import valid_region, PROFILE_KEYS
 
     for key in (
+        "resume_automatic",
+        "resume_was_running",
+        "reduce_motion",
+        "update_checks",
+        "auto_download_updates",
         "onboarding_done",
         "adaptive_sampling",
         "shortcuts_enabled",
@@ -141,6 +152,18 @@ def validate(raw):
                 ):
                     clean = validate({k: v for k, v in values.items() if k in PROFILE_KEYS})
                     result[key][name] = {k: clean[k] for k in PROFILE_KEYS if k in values}
+    from .lifecycle import CAMERA_KEYS
+
+    camera_profiles = raw.get("camera_profiles", {})
+    if isinstance(camera_profiles, dict):
+        for identity, profile in list(camera_profiles.items())[:20]:
+            if (
+                isinstance(identity, str)
+                and 0 < len(identity) <= 1024
+                and isinstance(profile, dict)
+            ):
+                clean = validate({key: profile[key] for key in CAMERA_KEYS if key in profile})
+                result["camera_profiles"][identity] = {key: clean[key] for key in CAMERA_KEYS}
     from .comfort import valid_points
 
     history = raw.get("curve_history", [])

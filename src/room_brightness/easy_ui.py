@@ -241,6 +241,11 @@ class EasyMixin:
         e = self.engine
         if "timed" in e.pause_reasons:
             return self.tr("Automatic mode is temporarily paused.", "الوضع التلقائي متوقف مؤقتًا.")
+        if "device" in e.pause_reasons:
+            return self.tr(
+                "Waiting for the selected camera/display to reconnect; no fallback device is used.",
+                "بانتظار إعادة توصيل الكاميرا أو الشاشة المحددة؛ لا يُستخدم جهاز بديل.",
+            )
         if "application" in e.pause_reasons:
             return self.tr(
                 "Paused for your selected foreground app; brightness is held.",
