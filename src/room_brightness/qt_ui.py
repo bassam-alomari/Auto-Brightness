@@ -1031,8 +1031,11 @@ class Window(
         self.organize_settings(left, right)
 
     def option_change(self, key, value):
+        old = self.engine.preferences[key]
         self.engine.preferences[key] = value
-        self.engine.persist()
+        if not self.engine.persist():
+            self.engine.preferences[key] = old
+            self.build()
 
     def comfort_settings(self, layout):
         e = self.engine

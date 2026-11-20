@@ -1,3 +1,14 @@
+# 0.10.0
+
+- Validate settings enum types before using them as dictionary keys.
+- Keep processing engine events after a callback fails and schedule secondary-display restoration on terminal control errors.
+- Recover exposure settling from three stable, high-confidence image levels if exposure metadata disappears.
+- Restore a changed option when saving fails and clear stale installer state after a failed update check.
+- Preserve both installed app versions if registration fails. Snapshot shortcuts and registry values during registration.
+- Publish tagged releases as drafts until both expected Windows assets are present.
+
+See [engineering rebuild status](docs/REBUILD-0.10.0.md) for remaining work.
+
 # 0.9.0
 
 - Hold camera-driven changes while supported exposure/gain metadata changes, until two stable reading cycles. Preserve pair-level exposure changes instead of hiding them in the average; missing metadata is not fabricated.

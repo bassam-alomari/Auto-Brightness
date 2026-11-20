@@ -32,13 +32,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
+          $version = (Get-Content pyproject.toml | Select-String '^version = "([0-9.]+)"$').Matches.Groups[1].Value
+          if ($env:GITHUB_REF_NAME -cne "v$version") { throw 'Tag must match package version' }
+          $setup = "dist/AutoBrightness-$version-Setup.exe"
+          $portable = "dist/AutoBrightness-$version-portable.zip"
+          foreach ($file in @($setup, $portable)) {
+            if (!(Test-Path -LiteralPath $file -PathType Leaf)) { throw "Missing asset: $file" }
+          }
           gh release view $env:GITHUB_REF_NAME *> $null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $env:GITHUB_REF_NAME --verify-tag --generate-notes --title "Auto Brightness $env:GITHUB_REF_NAME"
-            if ($LASTEXITCODE -ne 0) { throw 'Release creation failed' }
-          }
-          $assets = Get-ChildItem -LiteralPath dist -File | Where-Object { $_.Name -match '^AutoBrightness-.*-(Setup\.exe|portable\.zip)$' }
-          foreach ($asset in $assets) {
-            gh release upload $env:GITHUB_REF_NAME $asset.FullName --clobber
-            if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
-          }
+          if ($LASTEXITCODE -eq 0) { throw 'Release already exists. Inspect it before publishing again.' }
+          gh release create $env:GITHUB_REF_NAME $setup $portable --verify-tag --generate-notes --draft
+          if ($LASTEXITCODE -ne 0) { throw 'Draft creation or upload failed' }
+          $assets = gh release view $env:GITHUB_REF_NAME --json assets --jq '.assets[].name'
+          if ($LASTEXITCODE -ne 0 -or $assets -notcontains (Split-Path $setup -Leaf) -or $assets -notcontains (Split-Path $portable -Leaf)) { throw 'Draft assets incomplete' }
+          gh release edit $env:GITHUB_REF_NAME --draft=false
+          if ($LASTEXITCODE -ne 0) { throw 'Publishing release failed' }

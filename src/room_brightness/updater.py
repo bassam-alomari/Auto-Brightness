@@ -191,6 +191,8 @@ class UpdateClient:
                 ):
                     self.path = None
             except Exception:
+                self.release = self.path = None
+                self.progress = 0
                 self.state = "check_error"
             finally:
                 self.busy = False

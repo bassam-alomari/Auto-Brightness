@@ -20,6 +20,38 @@ class ReviewEngine:
     def update_secondaries(self, reading):
         self.secondary_displays.process(reading, self.preferences, self.power_mode, self.cancel)
 
+    def handle_error(self, operation, error):
+        super().handle_error(operation, error)
+        if not self.running and not self.resume_pending and not self.pause_reasons:
+            if self.busy and self.operation == "restore":
+                self.root.after(100, self.restore_after_error)
+            else:
+                self.restore_after_error()
+
+    def restore_after_error(self):
+        if (
+            self.running
+            or self.resume_pending
+            or self.pause_reasons
+            or not self.secondary_displays.states
+        ):
+            return
+        if self.busy:
+            self.root.after(100, self.restore_after_error)
+            return
+        self.restore_secondary_displays()
+
+    def restore_secondary_displays(self, done=lambda _: None):
+        def completed(results):
+            if "restore_failed" in results.values():
+                self.health_events.append(
+                    dict(time=time.monotonic(), category="secondary_restore_failed")
+                )
+            done(results)
+
+        enabled = self.restore.get()
+        self.work(lambda: self.secondary_displays.restore(enabled), completed, "restore_multi")
+
     def finish_stop(self):
         if self.busy:
             return

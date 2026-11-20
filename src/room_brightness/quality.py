@@ -15,6 +15,7 @@ class ExposureGate:
         self.previous = None
         self.settling = False
         self.stable = 0
+        self.fallback_levels = deque(maxlen=3)
 
     def allow(self, reading):
         exposure = reading.get("exposure")
@@ -27,13 +28,28 @@ class ExposureGate:
             unstable |= number(gain) and number(b) and abs(gain - b) > max(2, abs(b) * 0.1)
         self.previous = current
         if unstable:
+            self.fallback_levels.clear()
             self.settling = True
             self.stable = 0
             return False
         if self.settling:
-            # Missing metadata cannot count as evidence that exposure settled.
             if current == (None, None):
+                level = reading.get("level")
+                confidence = reading.get("confidence")
+                if number(level) and number(confidence) and confidence >= 0.75:
+                    self.fallback_levels.append(level)
+                else:
+                    self.fallback_levels.clear()
+                if (
+                    len(self.fallback_levels) == 3
+                    and max(self.fallback_levels) - min(self.fallback_levels) <= 2
+                ):
+                    self.settling = False
+                    self.fallback_levels.clear()
+                    return True
+                self.stable = 0
                 return False
+            self.fallback_levels.clear()
             self.stable += 1
             if self.stable < 2:
                 return False

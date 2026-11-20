@@ -577,15 +577,15 @@ class App:
         threading.Thread(target=worker, daemon=True).start()
 
     def poll(self):
+        import logging
+
         try:
             done, result, error = self.events.get_nowait()
             if done == "tray":
                 result()
-                self.poll_timer = self.root.after(80, self.poll)
                 return
             if done == "progress":
                 self.display_value.set(str(result))
-                self.poll_timer = self.root.after(80, self.poll)
                 return
             operation = self.operation
             self.busy = False
@@ -593,7 +593,7 @@ class App:
                 if (
                     self.cancel.is_set()
                     and operation in ("measure", "control", "observe")
-                    and (not self.running)
+                    and not self.running
                 ):
                     self.finish_stop()
                 else:
@@ -603,7 +603,15 @@ class App:
             self.update_controls()
         except queue.Empty:
             pass
-        self.poll_timer = self.root.after(80, self.poll)
+        except Exception:
+            logging.getLogger(__name__).exception("Control callback failed")
+            self.running = False
+            self.cancel.set()
+            if not self.busy:
+                self.handle_error("callback", "Control callback failed.")
+        finally:
+            if self.root.winfo_exists():
+                self.poll_timer = self.root.after(80, self.poll)
 
     def handle_error(self, operation, error):
         self.running = self.verified = False

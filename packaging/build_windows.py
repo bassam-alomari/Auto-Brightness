@@ -105,7 +105,7 @@ subprocess.run(
     ],
     check=True,
 )
-archive = out / "AutoBrightness-0.9.0-portable.zip"
+archive = out / "AutoBrightness-0.10.0-portable.zip"
 with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:
     for file in app.rglob("*"):
         if file.is_file():
@@ -116,7 +116,7 @@ subprocess.run(
         str(csc),
         "/nologo",
         "/target:winexe",
-        f"/out:{out / 'AutoBrightness-0.9.0-Setup.exe'}",
+        f"/out:{out / 'AutoBrightness-0.10.0-Setup.exe'}",
         f"/win32icon:{project / 'src/room_brightness/app.ico'}",
         f"/resource:{archive},payload.zip",
         "/reference:System.Windows.Forms.dll",

@@ -16,13 +16,22 @@ namespace AutoBrightness {
    if(!Directory.Exists(root)||!File.Exists(Path.Combine(root,".autobrightness-install"))||File.ReadAllText(Path.Combine(root,".autobrightness-install"))!="Auto Brightness"||!File.Exists(Path.Combine(root,"AutoBrightness.exe")))throw new IOException("Unrecognized app folder; nothing was removed.");
    NoLinks(root);
   }
-  public static bool Install(string source,string root){
+  public static bool Install(string source,string root){return Install(source,root,null);}
+  public static bool Install(string source,string root,Action register){
+   root=Path.GetFullPath(root);
+   Directory.CreateDirectory(Path.GetDirectoryName(root));
+   using(var gate=new FileStream(root+"-install.lock",FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None)){
+    return InstallLocked(source,root,register);
+   }
+  }
+  static bool InstallLocked(string source,string root,Action register){
    root=Path.GetFullPath(root);source=Path.GetFullPath(source);
    if(root.Equals(source,StringComparison.OrdinalIgnoreCase)||root.StartsWith(source+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))throw new IOException("Overlapping source and target.");
    if(!File.Exists(Path.Combine(source,"AutoBrightness.exe")))throw new IOException("Incomplete payload.");
    NoLinks(source);
    string ready=root+"-new-"+Guid.NewGuid().ToString("N"),previous=Previous(root);
-   bool moved=false,replaced=false;
+   string older=previous+"-staged-"+Guid.NewGuid().ToString("N");
+   bool moved=false,replaced=false,olderMoved=false;
    Directory.CreateDirectory(ready);
    try{
     foreach(string file in Directory.GetFiles(source,"*",SearchOption.AllDirectories)){
@@ -33,14 +42,17 @@ namespace AutoBrightness {
     File.WriteAllText(Path.Combine(ready,".autobrightness-install"),"Auto Brightness");
     if(Directory.Exists(root)){
      Recognized(root);
-     if(Directory.Exists(previous)){Recognized(previous);Directory.Delete(previous,true);}
+     if(Directory.Exists(previous)){Recognized(previous);Directory.Move(previous,older);olderMoved=true;}
      Directory.Move(root,previous);moved=true;
     }
     Directory.Move(ready,root);replaced=true;
+    if(register!=null)register();
+    if(olderMoved){try{Directory.Delete(older,true);}catch(IOException){}catch(UnauthorizedAccessException){}}
     return moved;
    }catch{
     if(replaced && Directory.Exists(root)){Recognized(root);Directory.Delete(root,true);}
     if(moved && Directory.Exists(previous))Directory.Move(previous,root);
+    if(olderMoved && Directory.Exists(older))Directory.Move(older,previous);
     throw;
    }finally{if(Directory.Exists(ready))Directory.Delete(ready,true);}
   }

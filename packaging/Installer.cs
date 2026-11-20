@@ -13,10 +13,8 @@ class Installer {
    if(args[i]=="--restart")restart=true;
   }
   string root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Programs","AutoBrightness");
-  if(MessageBox.Show("Install Auto Brightness 0.9.0 for your Windows account?\n\nPersonal settings and curves are preserved.\n\n"+root,"Auto Brightness Setup",MessageBoxButtons.OKCancel,MessageBoxIcon.Information)!=DialogResult.OK)return;
+  if(MessageBox.Show("Install Auto Brightness 0.10.0 for your Windows account?\n\nPersonal settings and curves are preserved.\n\n"+root,"Auto Brightness Setup",MessageBoxButtons.OKCancel,MessageBoxIcon.Information)!=DialogResult.OK)return;
   string staging=Path.Combine(Path.GetTempPath(),"AutoBrightness-"+Guid.NewGuid().ToString("N"));
-  string backup=root+"-previous";
-  bool replaced=false,oldMoved=false,registered=false;
   try {
    if(waitPid>0){try{using(Process previous=Process.GetProcessById(waitPid)){if(!previous.WaitForExit(120000))throw new Exception("The app is still running. Close it and try again.");}}catch(ArgumentException){}}
    Directory.CreateDirectory(staging);
@@ -25,17 +23,16 @@ class Installer {
    string unpack=Path.Combine(staging,"app");
    ZipFile.ExtractToDirectory(zip,unpack);
    if(!File.Exists(Path.Combine(unpack,"AutoBrightness.exe")))throw new Exception("Incomplete installer payload.");
-   oldMoved=AutoBrightness.InstallCore.Install(unpack,root);replaced=true;
+   AutoBrightness.InstallCore.Install(unpack,root,()=>{
    ProcessStartInfo setup=new ProcessStartInfo("powershell.exe","-NoProfile -ExecutionPolicy Bypass -File \""+Path.Combine(root,"RegisterInstall.ps1")+"\" -InstallRoot \""+root+"\"");
    setup.UseShellExecute=false;setup.CreateNoWindow=true;
-   using(Process process=Process.Start(setup)){process.WaitForExit();if(process.ExitCode!=0)throw new Exception("Shortcut registration failed.");}
-   registered=true;
+   using(Process process=Process.Start(setup)){if(!process.WaitForExit(30000)){process.Kill();process.WaitForExit();throw new Exception("Shortcut registration timed out.");}if(process.ExitCode!=0)throw new Exception("Shortcut registration failed.");}
+   });
    // Keep one recognized previous installation for an explicit user rollback.
    if(restart || MessageBox.Show("Installation complete. Open Auto Brightness now?","Auto Brightness Setup",MessageBoxButtons.YesNo,MessageBoxIcon.Information)==DialogResult.Yes){
     ProcessStartInfo app=new ProcessStartInfo(Path.Combine(root,"AutoBrightness.exe"));app.UseShellExecute=false;app.CreateNoWindow=true;Process.Start(app);
    }
   } catch(Exception e){
-   if(!registered){try{if(replaced && Directory.Exists(root))AutoBrightness.InstallCore.UndoFailedInstall(root,oldMoved);}catch{MessageBox.Show("Automatic rollback failed. Your previous app is at:\n"+backup,"Auto Brightness Setup",MessageBoxButtons.OK,MessageBoxIcon.Warning);}}
    MessageBox.Show("Installation could not finish. Close all Auto Brightness windows and try again.\n\n"+e.Message,"Auto Brightness Setup",MessageBoxButtons.OK,MessageBoxIcon.Error);
   } finally {try{if(Directory.Exists(staging))Directory.Delete(staging,true);}catch{}}
  }

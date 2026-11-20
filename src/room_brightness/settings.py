@@ -220,20 +220,21 @@ def validate(raw):
             profile = power.get(mode)
             if (
                 isinstance(profile, dict)
-                and profile.get("curve") in CURVES
+                and isinstance(profile.get("curve"), str)
+                and profile["curve"] in CURVES
                 and valid_points(profile.get("points"))
             ):
                 result["power_curves"][mode] = {
                     "curve": profile["curve"],
                     "points": [list(point) for point in profile["points"]],
                 }
-    if raw.get("brightness_curve") in CURVES:
+    if isinstance(raw.get("brightness_curve"), str) and raw["brightness_curve"] in CURVES:
         result["brightness_curve"] = raw["brightness_curve"]
     if raw.get("arabic_dialect") in ("msa", "jo", "eg", "gulf"):
         result["arabic_dialect"] = raw["arabic_dialect"]
     if raw.get("startup_defaults_revision") == 1:
         result["startup_defaults_revision"] = 1
-    if raw.get("language") in LANGUAGES:
+    if isinstance(raw.get("language"), str) and raw["language"] in LANGUAGES:
         result["language"] = raw["language"]
     if raw.get("theme") in ("auto", "light", "dark", "glass", *THEME_NAMES):
         result["theme"] = raw["theme"]

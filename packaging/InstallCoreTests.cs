@@ -21,6 +21,8 @@ class InstallCoreTests {
    Refused(()=>InstallCore.Install(bad,root),"incomplete-payload-refused");Check(Version(root)=="one","failed-update-keeps-current");
    string unknown=Path.Combine(parent,"unknown");Directory.CreateDirectory(unknown);File.WriteAllText(Path.Combine(unknown,"user.txt"),"keep");
    Refused(()=>InstallCore.Install(two,unknown),"unrecognized-root-refused");Check(File.ReadAllText(Path.Combine(unknown,"user.txt"))=="keep","unrecognized-data-preserved");
+   try{InstallCore.Install(three,root,()=>{throw new IOException("registration failed");});throw new Exception("Expected registration failure");}
+   catch(IOException){if(Version(root)!="one"||Version(InstallCore.Previous(root))!="two")throw new Exception("Upgrade lost the rollback version");}
    bool previous=InstallCore.Install(three,root);Check(Version(root)=="three","second-upgrade");
    InstallCore.UndoFailedInstall(root,previous);Check(Version(root)=="one","registration-failure-reverts-files");
    Refused(()=>InstallCore.Rollback(root),"missing-previous-refused");Check(Version(root)=="one","refused-rollback-keeps-current");
