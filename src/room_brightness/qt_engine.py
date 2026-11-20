@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QMessageBox
 from . import ui, startup
 from .lifecycle import Lifecycle
 from .experience import Experience, effective_curve
+from .review import ReviewEngine
 from .paths import DATA_DIR
 from .settings import load_settings, resolve_language, resolve_theme
 from .widgets import PALETTES
@@ -71,7 +72,7 @@ class Scheduler(QObject):
             self.after_cancel(key)
 
 
-class Engine(Experience, Lifecycle, ui.App):
+class Engine(ReviewEngine, Experience, Lifecycle, ui.App):
     """Share tested control methods without creating a Tcl/Tk interpreter."""
 
     def __init__(self, scheduler, discover=True, directory=None):
@@ -150,9 +151,12 @@ class Engine(Experience, Lifecycle, ui.App):
             self.discovery_timer = scheduler.after(100, self.refresh_cameras)
 
         self.init_lifecycle(discover)
+        self.init_review()
+        self.allow_native_notifications = discover
 
     def work(self, function, done, operation):
         def completed(result):
+            previous = self.controller.expected if self.controller else None
             resuming = operation == "test" and hasattr(self, "resume_original")
             expected = getattr(self, "resume_expected", None)
             manual = resuming and expected is not None and result != expected
@@ -162,6 +166,8 @@ class Engine(Experience, Lifecycle, ui.App):
                 if hasattr(self, "resume_expected"):
                     del self.resume_expected
             done(result)
+            if operation == "observe" and previous is not None and result != previous:
+                self.capture_preference(result)
             if operation == "test" and self.running:
                 self.preferences["resume_was_running"] = True
                 self.persist()
@@ -222,6 +228,8 @@ class Engine(Experience, Lifecycle, ui.App):
             self.diagnostic = self.last_meter.get("reason", "image_curve")
             self.sampling_budget.observe(self.last_meter)
             self.retry_attempt = 0
+            if self.last_meter.get("manual"):
+                self.capture_preference(self.last_meter["current"])
 
     def begin_pair_cycle(self):
         if self.pause_reasons or not self.running:
@@ -399,7 +407,13 @@ class Engine(Experience, Lifecycle, ui.App):
     def select_display(self, identity):
         if self.trial_original is not None:
             raise ValueError("Finish the temporary trial first.")
-        if self.running or self.busy or self.resume_pending:
+        if (
+            self.running
+            or self.busy
+            or self.resume_pending
+            or self.pause_reasons
+            or self.original is not None
+        ):
             raise ValueError("Stop automatic mode before changing settings.")
         from . import monitors
 
@@ -654,6 +668,7 @@ class Engine(Experience, Lifecycle, ui.App):
 
     def manual_applied(self, actual):
         self.display_value.set(str(actual))
+        self.capture_preference(actual)
         self.manual_offer = None
         if (
             self.last_meter

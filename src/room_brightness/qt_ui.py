@@ -50,6 +50,7 @@ from .easy_ui import EasyMixin
 from .tuning_ui import TuningMixin
 from .session_ui import SessionMixin, accessible_widgets
 from .experience_ui import ExperienceMixin
+from .review_ui import ReviewUiMixin, HelpDialog
 from .camera import sample
 from . import __version__
 from .i18n import LANGUAGES, literal
@@ -479,7 +480,9 @@ class Curve(QWidget):
             painter.drawText(rect, flags | align | direction, caption)
 
 
-class Window(ExperienceMixin, SessionMixin, TuningMixin, EasyMixin, ExtrasMixin, QWidget):
+class Window(
+    ReviewUiMixin, ExperienceMixin, SessionMixin, TuningMixin, EasyMixin, ExtrasMixin, QWidget
+):
     def __init__(self, root, engine):
         super().__init__()
         self.root, self.engine = root, engine
@@ -737,6 +740,11 @@ class Window(ExperienceMixin, SessionMixin, TuningMixin, EasyMixin, ExtrasMixin,
         self.trial_revert = QPushButton(self.tr("Revert trial now", "إنهاء التجربة والرجوع الآن"))
         self.trial_revert.clicked.connect(lambda: self.engine.end_trial(False))
         left.addWidget(self.trial_revert)
+        self.review_alert = self.label("")
+        left.addWidget(self.review_alert)
+        help_button = QPushButton(self.tr("Control status and help", "حالة التحكم والمساعدة"))
+        help_button.clicked.connect(lambda: self.open_review(HelpDialog))
+        left.addWidget(help_button)
         self.decision_label = self.label("")
         left.addWidget(self.decision_label)
         session_button = QPushButton(self.tr("Session and updates", "الجلسة والتحديثات"))
@@ -1004,6 +1012,7 @@ class Window(ExperienceMixin, SessionMixin, TuningMixin, EasyMixin, ExtrasMixin,
         session_button = QPushButton(self.tr("Session and updates", "الجلسة والتحديثات"))
         session_button.clicked.connect(self.session_dialog)
         left.addWidget(session_button)
+        self.review_settings(left)
         self.experience_settings(left)
         self.tuning_settings(left)
         self.extras_settings(left)
@@ -1264,6 +1273,8 @@ class Window(ExperienceMixin, SessionMixin, TuningMixin, EasyMixin, ExtrasMixin,
                         self.preview.setPixmap(image)
                         self.preview.setProperty("source", png)
         else:
+            if getattr(self, "settings_tabs", None):
+                self.settings_tabs.setEnabled(e.trial_original is None)
             for index in range(self.panels.count()):
                 card = self.panels.itemAt(index).widget()
                 if card:
@@ -1286,6 +1297,7 @@ class Window(ExperienceMixin, SessionMixin, TuningMixin, EasyMixin, ExtrasMixin,
         if (self.engine.language, self.engine.theme, self.page) != self.signature:
             self.build()
         self.update_values()
+        self.update_review_ui()
         self.maybe_wizard()
         if self.page == "settings":
             client = self.engine.update_client

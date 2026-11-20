@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from collections import deque
 import math
 import statistics
+from .quality import ExposureGate
 
 
 def curve_target(shift, preferred, low, high, sensitivity=1.0):
@@ -78,6 +79,7 @@ class AdaptiveController:
     bright_samples: int = 0
     dark_samples: int = 0
     covered_samples: int = 0
+    exposure_gate: object = field(default_factory=ExposureGate)
     confirmations: int = 0
     direction: int = 0
     needs_anchor: bool = True
@@ -117,6 +119,13 @@ class AdaptiveController:
         )
         if self.covered_samples and (self.options or {}).get("cover_guard", True):
             self.reason = "possible_cover" if self.covered_samples >= 2 else "uncertain"
+            if self.stability is not None:
+                self.stability.pending, self.stability.count = None, 0
+            return current
+        if (self.options or {}).get("exposure_guard", True) and not self.exposure_gate.allow(
+            measurement
+        ):
+            self.reason = "exposure_settling"
             if self.stability is not None:
                 self.stability.pending, self.stability.count = None, 0
             return current

@@ -54,6 +54,10 @@ def camera_sample(index: int, preview=False, region=None, protection=False) -> d
                 features = scene_features(frame)
                 measured = analyze_frame(gray, exposure)
                 measured.update(features)
+                frame_gain = cap.get(cv2.CAP_PROP_GAIN)
+                measured["gain"] = (
+                    frame_gain if math.isfinite(frame_gain) and frame_gain >= 0 else None
+                )
                 measured["score"] = vision_score(
                     features["illumination_level"], measured["exposure"]
                 )

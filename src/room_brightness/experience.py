@@ -185,4 +185,30 @@ def problem_bundle(engine, version):
             "reduce_motion",
         )
     }
+    allowed = {
+        "manual_hold",
+        "following",
+        "image_curve",
+        "uncertain",
+        "deadband",
+        "exposure_settling",
+        "confirming_change",
+        "transient",
+        "possible_cover",
+        "permission_denied",
+        "display_unavailable",
+        "display_control_failed",
+        "brightness_verification_failed",
+        "restored",
+        "manual_preserved",
+        "restore_failed",
+    }
+    report["additional_displays"] = {
+        "enabled": bool(engine.preferences["multi_display_enabled"]),
+        "configured": len(engine.preferences["multi_display_targets"]),
+        "states": [
+            status["state"] if status.get("state") in allowed else "unknown"
+            for status in list(engine.secondary_displays.status.values())
+        ],
+    }
     return report

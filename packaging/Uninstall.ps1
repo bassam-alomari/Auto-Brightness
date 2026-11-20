@@ -6,6 +6,9 @@ if([Windows.Forms.MessageBox]::Show('Remove Auto Brightness? Close the app using
 try{
  $exe=Join-Path $target 'AutoBrightness.exe'
  $check=[IO.File]::Open($exe,'Open','ReadWrite','None');$check.Dispose()
+ [Reflection.Assembly]::Load([IO.File]::ReadAllBytes((Join-Path $target 'InstallCore.dll'))) | Out-Null
+ [AutoBrightness.InstallCore]::Recognized($target)
+ if(Test-Path -LiteralPath ($target+'-previous')){[AutoBrightness.InstallCore]::Recognized($target+'-previous')}
  $shell=New-Object -ComObject WScript.Shell
  foreach($path in @((Join-Path ([Environment]::GetFolderPath('Programs')) 'Auto Brightness.lnk'),(Join-Path ([Environment]::GetFolderPath('Desktop')) 'Auto Brightness.lnk'))){
   if(Test-Path -LiteralPath $path){if($shell.CreateShortcut($path).TargetPath -eq $exe){Remove-Item -LiteralPath $path}}
@@ -14,6 +17,6 @@ try{
  $command=(Get-ItemProperty -Path $run -Name RoomBrightness -ErrorAction SilentlyContinue).RoomBrightness
  if($command -and $command.Contains($exe)){Remove-ItemProperty -Path $run -Name RoomBrightness}
  Remove-Item -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\AutoBrightness' -ErrorAction SilentlyContinue
- Remove-Item -LiteralPath $target -Recurse -Force
+ [AutoBrightness.InstallCore]::Uninstall($target)
  [Windows.Forms.MessageBox]::Show('Auto Brightness was removed.','Auto Brightness') | Out-Null
 }catch{[Windows.Forms.MessageBox]::Show('Close Auto Brightness using Exit, then retry. '+$_.Exception.Message,'Uninstall failed') | Out-Null;exit 1}

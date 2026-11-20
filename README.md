@@ -1,6 +1,6 @@
 # Auto Brightness
 
-A local Windows app that adjusts internal-display brightness from the average of two camera readings. Images stay in memory: no saved photos, recording or uploads. Image brightness is a heuristic, not calibrated room illuminance or a trained AI model.
+A local Windows app that adjusts selected internal and supported DDC/CI external-display brightness from the average of two camera readings. Images stay in memory: no saved photos, recording or uploads. Image brightness is a heuristic, not calibrated room illuminance or a trained AI model.
 
 ## Run
 
@@ -8,7 +8,7 @@ A local Windows app that adjusts internal-display brightness from the average of
 2. Run `Start.cmd`.
 3. Choose a camera and press Start. Screen control is verified before automatic operation.
 
-Requires a Windows internal display that supports CIM brightness methods. WMIC is not required. The camera indicator may illuminate during sampling.
+Requires a supported Windows internal CIM display or external DDC/CI display. WMIC is not required. The camera indicator may illuminate during sampling.
 
 ## Defaults and controls
 
@@ -54,7 +54,7 @@ The camera is cancelled on Windows lock/suspend and restarted after unlock/resum
 
 ## Standalone installation
 
-Download `AutoBrightness-0.8.0-Setup.exe` from the release assets, close any running copy using Exit, and run the installer. It installs under your current account without Python or administrator privileges and creates Desktop and Start menu shortcuts. Remove it through Windows Installed apps; personal preferences are preserved. A portable ZIP is also available: extract it and open `AutoBrightness.exe`.
+Download `AutoBrightness-0.9.0-Setup.exe` from the release assets, close any running copy using Exit, and run the installer. It installs under your current account without Python or administrator privileges and creates Desktop and Start menu shortcuts. Remove it through Windows Installed apps; personal preferences are preserved. A portable ZIP is also available: extract it and open `AutoBrightness.exe`.
 
 For developers: `python -m pip install -e ".[windows-build]"` then `python packaging/build_windows.py` on Windows with Python 3.12 x64 builds both packages. The Windows installer workflow also builds them when run manually or on a version tag.
 
@@ -142,3 +142,17 @@ Settings → Comfort and safeguards contains the new tools.
 - **Tray quick panel:** single-click the tray icon for current brightness, Start/Stop, timed pauses/resume and profile selection. Profiles require stopped/idle operation. Double-click or Open main window opens the full app.
 - **Previous installed version:** the 0.8.0 installer retains one recognized `AutoBrightness-previous` folder beside the installed app. Settings → Return to previous installed version is available only in the standard installed location with valid markers/script. Stop first and confirm; the helper waits for this process, swaps current/previous folders and registers/starts the previous app. Source/portable copies cannot roll back themselves. The installer replaces an older previous backup when updating again, so this uses extra disk space for one app. Settings remain in LocalAppData/RoomBrightness; `settings.json.before-rollback` preserves a pre-rollback copy because old versions may drop unknown new fields. Actual rollback is not run during development tests.
 - **Problem bundle:** review anonymous cached device status, current version, fixed feature flags, recent readings and categorized errors before explicitly exporting a ZIP containing diagnostics.json and ISSUE.md. Cached discovery is not a live hardware compatibility test. The template lets you describe the problem manually. No upload, screenshots, raw error messages, user/device names or local paths are collected automatically.
+
+## 0.9.0: measurement, displays and review
+
+Settings is organized into **Brightness, Camera, Screens, Appearance, Updates and Tools**, with search across every page. Search also reveals matching advanced options; clearing it returns to your previous page. The existing basic/advanced switch is retained.
+
+**Camera exposure:** supported exposure/gain changes and changes within a camera pair now hold automatic changes until two stable cycles. No exposure or gain is invented for unsupported drivers. If metadata disappears after a detected change, stability cannot be confirmed through this guard; you can inspect camera behavior or disable the option. This stabilizes camera readings rather than measuring calibrated room lux.
+
+**Additional displays:** refresh Screens, open Configure multiple displays, and opt in to up to four additional supported screens. Each has its own limits, curve, original brightness and manual-priority state. The main display retains Home settings. Each added display is briefly verified by a five-point change/restoration at first use. A single camera cycle feeds every controller, with serial cancellable driver writes; the total cycle can be longer than the configured interval. Unsupported/disconnected screens are reported and can retry; permission/readback-verification failures stop retrying until a new session. Stop restores managed screens when enabled, preserving detected manual changes. Restore failures remain visible and may require manual correction. Exact identity is used throughout; no fallback device is silently chosen. Device selections/profiles remain local rather than portable exports.
+
+**Preference suggestions:** enabled local collection records no images and writes no learning history to disk. Up to 60 accepted manual adjustments are held in this session, grouped by camera/main display/power source. A suggestion needs at least three adjustments 30 seconds apart, similar reliable light levels and consistent preferred brightness, within the last 24 hours. A custom curve with valid monotonic neighbors is required. Open Review preference suggestions to compare before explicitly saving. Disable collection or clear evidence whenever desired. Suggestions do not alter a curve automatically.
+
+**Control help:** visible warnings and contextual steps distinguish camera contention/permissions, unplugged displays, DDC/CI/driver issues, verification and restoration failures. Secondary-display failures are isolated; loss of the primary display or shared camera pauses the common session. Native notifications are deduplicated and disabled for tests.
+
+See [Windows validation](docs/VALIDATION.md) for automated transaction checks and prepared Sandbox/manual/hardware acceptance. Passing software tests is not a guarantee for every camera/display driver. No app was installed/uninstalled on the user's normal Windows profile during development validation.

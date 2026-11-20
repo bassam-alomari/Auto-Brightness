@@ -13,7 +13,7 @@ class Installer {
    if(args[i]=="--restart")restart=true;
   }
   string root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Programs","AutoBrightness");
-  if(MessageBox.Show("Install Auto Brightness 0.8.0 for your Windows account?\n\nPersonal settings and curves are preserved.\n\n"+root,"Auto Brightness Setup",MessageBoxButtons.OKCancel,MessageBoxIcon.Information)!=DialogResult.OK)return;
+  if(MessageBox.Show("Install Auto Brightness 0.9.0 for your Windows account?\n\nPersonal settings and curves are preserved.\n\n"+root,"Auto Brightness Setup",MessageBoxButtons.OKCancel,MessageBoxIcon.Information)!=DialogResult.OK)return;
   string staging=Path.Combine(Path.GetTempPath(),"AutoBrightness-"+Guid.NewGuid().ToString("N"));
   string backup=root+"-previous";
   bool replaced=false,oldMoved=false,registered=false;
@@ -25,29 +25,7 @@ class Installer {
    string unpack=Path.Combine(staging,"app");
    ZipFile.ExtractToDirectory(zip,unpack);
    if(!File.Exists(Path.Combine(unpack,"AutoBrightness.exe")))throw new Exception("Incomplete installer payload.");
-   // Stage on the destination volume before swapping directories.
-   string ready=root+"-new-"+Guid.NewGuid().ToString("N");
-   Directory.CreateDirectory(ready);
-   try {
-    foreach(string file in Directory.GetFiles(unpack,"*",SearchOption.AllDirectories)){
-     string relative=file.Substring(unpack.Length+1);
-     string target=Path.GetFullPath(Path.Combine(ready,relative));
-     if(!target.StartsWith(Path.GetFullPath(ready)+Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase))throw new Exception("Invalid installer path.");
-     Directory.CreateDirectory(Path.GetDirectoryName(target));File.Copy(file,target,true);
-    }
-    File.WriteAllText(Path.Combine(ready,".autobrightness-install"),"Auto Brightness");
-    if(Directory.Exists(root)){
-     if((File.GetAttributes(root)&FileAttributes.ReparsePoint)!=0)throw new Exception("Linked app folders are not supported.");
-     if(!File.Exists(Path.Combine(root,".autobrightness-install")))throw new Exception("An unrecognized folder exists at the install location. No files were replaced.");
-     if(Directory.Exists(backup)){
-      if((File.GetAttributes(backup)&FileAttributes.ReparsePoint)!=0)throw new Exception("Linked backup folders are not supported.");
-      if(!File.Exists(Path.Combine(backup,".autobrightness-install")))throw new Exception("Unrecognized backup folder. No app files were replaced.");
-      Directory.Delete(backup,true);
-     }
-     Directory.Move(root,backup);oldMoved=true;
-    }
-    Directory.Move(ready,root);replaced=true;
-   } finally {try{if(Directory.Exists(ready))Directory.Delete(ready,true);}catch{}}
+   oldMoved=AutoBrightness.InstallCore.Install(unpack,root);replaced=true;
    ProcessStartInfo setup=new ProcessStartInfo("powershell.exe","-NoProfile -ExecutionPolicy Bypass -File \""+Path.Combine(root,"RegisterInstall.ps1")+"\" -InstallRoot \""+root+"\"");
    setup.UseShellExecute=false;setup.CreateNoWindow=true;
    using(Process process=Process.Start(setup)){process.WaitForExit();if(process.ExitCode!=0)throw new Exception("Shortcut registration failed.");}
@@ -57,7 +35,7 @@ class Installer {
     ProcessStartInfo app=new ProcessStartInfo(Path.Combine(root,"AutoBrightness.exe"));app.UseShellExecute=false;app.CreateNoWindow=true;Process.Start(app);
    }
   } catch(Exception e){
-   if(!registered){try{if(replaced && Directory.Exists(root))Directory.Delete(root,true);if(oldMoved && Directory.Exists(backup))Directory.Move(backup,root);}catch{MessageBox.Show("Automatic rollback failed. Your previous app is at:\n"+backup,"Auto Brightness Setup",MessageBoxButtons.OK,MessageBoxIcon.Warning);}}
+   if(!registered){try{if(replaced && Directory.Exists(root))AutoBrightness.InstallCore.UndoFailedInstall(root,oldMoved);}catch{MessageBox.Show("Automatic rollback failed. Your previous app is at:\n"+backup,"Auto Brightness Setup",MessageBoxButtons.OK,MessageBoxIcon.Warning);}}
    MessageBox.Show("Installation could not finish. Close all Auto Brightness windows and try again.\n\n"+e.Message,"Auto Brightness Setup",MessageBoxButtons.OK,MessageBoxIcon.Error);
   } finally {try{if(Directory.Exists(staging))Directory.Delete(staging,true);}catch{}}
  }

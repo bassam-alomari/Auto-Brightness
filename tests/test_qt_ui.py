@@ -150,6 +150,7 @@ class QtInterfaceTests(unittest.TestCase):
 
         self.window.page = "settings"
         self.window.change_theme("glass")
+        self.window.settings_tabs.setCurrentIndex(self.window.tab_keys.index("appearance"))
         self.qt.processEvents()
         self.assertTrue(self.window.glass_slider.isVisible())
         self.window.glass_slider.setValue(0)
@@ -936,3 +937,95 @@ class QtInterfaceTests(unittest.TestCase):
         self.window.quick_panel()
         self.assertIsNot(self.window.quick_window, first)
         self.window.quick_window.reject()
+
+    def test_settings_tabs_search_all_pages_and_restore_selected_page(self):
+        import copy
+
+        self.window.page = "settings"
+        self.window.change_language("ar")
+        self.assertEqual(
+            set(self.window.tab_keys),
+            {"brightness", "camera", "screens", "appearance", "updates", "tools"},
+        )
+        self.window.settings_tabs.setCurrentIndex(self.window.tab_keys.index("camera"))
+        before = copy.deepcopy(self.engine.preferences)
+        self.window.settings_search.setText("نسخة احتياطية")
+        self.assertEqual(self.window.tab_keys[self.window.settings_tabs.currentIndex()], "tools")
+        self.window.settings_search.clear()
+        self.assertEqual(self.window.tab_keys[self.window.settings_tabs.currentIndex()], "camera")
+        self.assertEqual(self.engine.preferences, before)
+        candidate = copy.deepcopy(before)
+        candidate["low"] = 20
+        self.engine.begin_trial(candidate)
+        self.window.update_values()
+        self.assertFalse(self.window.settings_tabs.isEnabled())
+        self.engine.end_trial(False)
+        self.window.update_values()
+        self.assertTrue(self.window.settings_tabs.isEnabled())
+
+    def test_multi_display_dialog_keeps_primary_and_saves_independent_profiles(self):
+        from room_brightness.review_ui import DisplaysDialog
+
+        self.engine.displays = [
+            dict(id="internal", name="Main"),
+            dict(id="a", name="Screen A"),
+            dict(id="b", name="Screen B"),
+        ]
+        dialog = DisplaysDialog(self.window)
+        dialog.enabled.setChecked(True)
+        dialog.selected["a"].setChecked(True)
+        dialog.low.setValue(15)
+        dialog.high.setValue(65)
+        dialog.choice.setCurrentIndex(1)
+        dialog.low.setValue(5)
+        dialog.high.setValue(35)
+        with patch("room_brightness.ui.set_checked") as write:
+            dialog.save()
+            write.assert_not_called()
+        self.assertEqual(self.engine.preferences["low"], 10)
+        self.assertEqual(self.engine.preferences["display_profiles"]["a"]["high"], 65)
+        self.assertEqual(self.engine.preferences["display_profiles"]["b"]["high"], 35)
+        self.assertEqual(self.engine.preferences["multi_display_targets"], ["a"])
+        dialog.deleteLater()
+
+    def test_preference_suggestion_requires_review_then_explicit_save(self):
+        import copy
+        from room_brightness.review_ui import SuggestionsDialog
+
+        now = time.monotonic()
+        context = (self.engine.camera_id, "internal", "ac")
+        for seconds, value in ((70, 60), (35, 61), (0, 62)):
+            self.engine.preference_evidence.observe(20, value, context, now - seconds)
+        before = copy.deepcopy(self.engine.preferences)
+        dialog = SuggestionsDialog(self.window)
+        with patch.object(self.engine, "refresh_power"):
+            dialog.review()
+        self.assertEqual(self.engine.preferences, before)
+        self.assertEqual(dialog.comparison.candidate["custom_points"][2], [20, 61])
+        dialog.comparison.save_comparison()
+        self.assertIn([20, 61], self.engine.preferences["custom_points"])
+        dialog.deleteLater()
+
+    def test_control_warning_is_visible_without_native_notifications_in_tests(self):
+        from room_brightness.review_ui import HelpDialog
+
+        self.engine.diagnostic = "display_error"
+        self.engine.secondary_displays.status = {"a": dict(state="restore_failed")}
+        with patch.object(self.window.tray, "showMessage") as notify:
+            self.window.update_review_ui()
+            notify.assert_not_called()
+        self.assertTrue(self.window.review_alert.text())
+        dialog = HelpDialog(self.window)
+        self.assertIn("manually", dialog.message.text())
+        dialog.reject()
+        dialog.deleteLater()
+
+    def test_display_change_is_blocked_until_old_restore_finishes(self):
+        from room_brightness import monitors
+
+        previous = monitors.selected_target
+        self.engine.original = 40
+        with self.assertRaises(ValueError):
+            self.engine.select_display("other")
+        self.assertEqual(monitors.selected_target, previous)
+        self.engine.original = None

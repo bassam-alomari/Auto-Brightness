@@ -8,6 +8,7 @@ import importlib.metadata
 import zipfile
 
 project = Path(__file__).resolve().parents[1]
+subprocess.run([sys.executable, str(project / "packaging/check_install_core.py")], check=True)
 out = project / "dist"
 subprocess.run(
     [
@@ -93,7 +94,18 @@ for source in (Path(sys.base_prefix) / "LICENSE.txt", Path(sys.base_prefix) / "L
     if source.is_file():
         licenses.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, licenses / "Python-LICENSE.txt")
-archive = out / "AutoBrightness-0.8.0-portable.zip"
+compiler = Path(r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe")
+subprocess.run(
+    [
+        str(compiler),
+        "/nologo",
+        "/target:library",
+        f"/out:{app / 'InstallCore.dll'}",
+        str(project / "packaging/InstallCore.cs"),
+    ],
+    check=True,
+)
+archive = out / "AutoBrightness-0.9.0-portable.zip"
 with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:
     for file in app.rglob("*"):
         if file.is_file():
@@ -104,13 +116,14 @@ subprocess.run(
         str(csc),
         "/nologo",
         "/target:winexe",
-        f"/out:{out / 'AutoBrightness-0.8.0-Setup.exe'}",
+        f"/out:{out / 'AutoBrightness-0.9.0-Setup.exe'}",
         f"/win32icon:{project / 'src/room_brightness/app.ico'}",
         f"/resource:{archive},payload.zip",
         "/reference:System.Windows.Forms.dll",
         "/reference:System.IO.Compression.dll",
         "/reference:System.IO.Compression.FileSystem.dll",
         str(project / "packaging/Installer.cs"),
+        str(project / "packaging/InstallCore.cs"),
     ],
     check=True,
 )

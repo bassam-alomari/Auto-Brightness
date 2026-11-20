@@ -705,6 +705,7 @@ class App:
                     self.tick()
                 self.screen_timer = self.root.after(15000, self.watch_screen)
             else:
+                self.original = None
                 self.set_status("verified", "verified_help", value=old)
 
         self.work(test, done, "test")
@@ -748,7 +749,7 @@ class App:
             self.timer = self.root.after(250, self.tick)
             return
         remaining = self.controller.hold_until - time.monotonic()
-        if remaining > 0:
+        if remaining > 0 and not getattr(self, "multi_active", False):
             self.set_status("manual_hold", "manual_help", seconds=round(remaining))
             self.timer = self.root.after(15000, self.tick)
             return
@@ -838,6 +839,8 @@ class App:
                     current = actual
                     if not manual:
                         self.controller.committed(actual)
+            if hasattr(self, "update_secondaries") and not self.cancel.is_set():
+                self.update_secondaries(reading)
             return dict(
                 current=current,
                 reason=self.controller.reason,

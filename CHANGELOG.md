@@ -1,3 +1,13 @@
+# 0.9.0
+
+- Hold camera-driven changes while supported exposure/gain metadata changes, until two stable reading cycles. Preserve pair-level exposure changes instead of hiding them in the average; missing metadata is not fabricated.
+- Add opt-in control of up to four additional displays with independent limits, curves, manual priority and restore state. Keep explicit display identity in read/write/fade calls; a failed screen does not redirect to another or stop healthy screens.
+- Gather bounded, session-local evidence from independent manual adjustments and offer a custom-curve proposal only after three consistent samples. Separate camera/display/power contexts, debounce each context and require review/explicit Save.
+- Organize Settings into Brightness, Camera, Screens, Appearance, Updates and Tools. Search spans tabs, reveals matching advanced sections and restores the prior tab when cleared. Updates stays visible without enabling advanced options.
+- Add contextual control help, visible warnings and deduplicated notifications in normal desktop sessions. Tests do not emit native notifications.
+- Extract the actual install transaction into shared C# code, exercise 16 real isolated file-system scenarios before packaging, and prepare an offline Windows Sandbox validation configuration/manual acceptance checklist.
+- Audit fixes: classify external-monitor readback failures before generic disconnection, stop retrying verification failures, reject boolean/invalid brightness inputs before native calls, block display changes while old restoration is pending, clear idle verification restore state, preserve explicit internal routing during fade cancellation, snapshot worker-owned status for GUI/report reads, and remove recognized previous installations during current-version uninstall.
+
 # 0.8.0
 
 - Flag repeatedly near-black, nearly textureless camera pairs as possibly covered and hold brightness. The message explicitly allows extreme room darkness; no physical-shutter recognition is claimed. Manual priority and confidence rules remain in force.

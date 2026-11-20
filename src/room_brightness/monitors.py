@@ -205,9 +205,9 @@ def list_displays(native=None):
 
 
 @contextmanager
-def selected(native=None):
+def selected(native=None, target=None):
     native = native or Native()
-    identity = selected_target
+    identity = selected_target if target is None else target
     with native.handles() as items:
         item = next((item for item in items if item[0] == identity), None)
         if item is None or not native.supported(item[2]):
@@ -217,9 +217,9 @@ def selected(native=None):
         yield native, item[2]
 
 
-def brightness(value=None):
+def brightness(value=None, target=None):
     global quantization_error
-    with selected() as (native, handle):
+    with selected(target=target) as (native, handle):
         minimum, current, maximum = native.read(handle)
         quantization_error = max(1, round(50 / (maximum - minimum)) + 1)
         if value is not None:
@@ -231,8 +231,8 @@ def brightness(value=None):
         return to_percent(minimum, current, maximum)
 
 
-def smooth(start, target, cancel, progress, duration):
-    with selected() as (native, handle):
+def smooth(start, target, cancel, progress, duration, target_identity=None):
+    with selected(target=target_identity) as (native, handle):
         minimum, current, maximum = native.read(handle)
         actual = to_percent(minimum, current, maximum)
         if actual != start:

@@ -9,6 +9,10 @@ from .i18n import LANGUAGES
 from .themes import THEME_NAMES
 
 DEFAULTS = {
+    "exposure_guard": True,
+    "preference_suggestions": True,
+    "multi_display_enabled": False,
+    "multi_display_targets": [],
     "cover_guard": True,
     "separate_power_curves": False,
     "power_curves": {
@@ -123,6 +127,9 @@ def validate(raw):
     from .extras import valid_region, PROFILE_KEYS
 
     for key in (
+        "exposure_guard",
+        "preference_suggestions",
+        "multi_display_enabled",
         "cover_guard",
         "separate_power_curves",
         "resume_automatic",
@@ -142,6 +149,13 @@ def validate(raw):
     for key in ("max_interval_ac", "max_interval_battery"):
         if type(raw.get(key)) is int and 5 <= raw[key] <= 600:
             result[key] = raw[key]
+    targets = raw.get("multi_display_targets", [])
+    if isinstance(targets, list):
+        result["multi_display_targets"] = list(
+            dict.fromkeys(
+                value for value in targets if isinstance(value, str) and 0 < len(value) <= 1024
+            )
+        )[:4]
     from .tuning import app_names
 
     result["pause_apps"] = app_names(raw.get("pause_apps", []))

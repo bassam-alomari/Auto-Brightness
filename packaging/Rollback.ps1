@@ -13,16 +13,13 @@ try {
  if($process){Wait-Process -Id $WaitPid -Timeout 120 -ErrorAction Stop}
  $settings=Join-Path $env:LOCALAPPDATA 'RoomBrightness\settings.json'
  if(Test-Path -LiteralPath $settings){Copy-Item -LiteralPath $settings -Destination ($settings+'.before-rollback') -Force}
- [IO.Directory]::Move($root,$swap)
- try{[IO.Directory]::Move($previous,$root)}catch{[IO.Directory]::Move($swap,$root);throw}
- [IO.Directory]::Move($swap,$previous)
+ [Reflection.Assembly]::Load([IO.File]::ReadAllBytes((Join-Path $root 'InstallCore.dll'))) | Out-Null
+ [AutoBrightness.InstallCore]::Rollback($root)
  try{
   & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'RegisterInstall.ps1') -InstallRoot $root
   if($LASTEXITCODE -ne 0){throw 'Could not register the previous version'}
  }catch{
-  [IO.Directory]::Move($root,$swap)
-  [IO.Directory]::Move($previous,$root)
-  [IO.Directory]::Move($swap,$previous)
+  [AutoBrightness.InstallCore]::Rollback($root)
   throw
  }
  Start-Process -FilePath (Join-Path $root 'AutoBrightness.exe') -WorkingDirectory $root -WindowStyle Hidden

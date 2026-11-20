@@ -56,7 +56,16 @@ def combine_frames(frames):
     confidence = float(np.median([frame["confidence"] for frame in frames]))
     if deviation > 0.25:
         confidence *= 0.35  # Wait out exposure/scene settling.
+    exposures = [frame.get("exposure") for frame in frames]
+    gains = [frame.get("gain") for frame in frames]
+    exposure_unstable = (
+        all(value is not None for value in exposures) and max(exposures) - min(exposures) > 0.25
+    ) or (
+        all(value is not None for value in gains)
+        and max(gains) - min(gains) > max(2, abs(float(np.median(gains))) * 0.1)
+    )
     return dict(
+        exposure_unstable=bool(exposure_unstable),
         score=middle,
         possibly_covered=all(frame.get("possibly_covered", False) for frame in frames),
         level=float(np.median([frame["level"] for frame in frames])),
@@ -78,6 +87,18 @@ def average_pair(first, second):
     for key in ("level", "score"):
         result[key] = (first[key] + second[key]) / 2
     result["confidence"] = min(first["confidence"], second["confidence"])
+    from .quality import number
+
+    changed = any(
+        number(first.get(key))
+        and number(second.get(key))
+        and abs(first[key] - second[key])
+        > (0.25 if key == "exposure" else max(2, abs(first[key]) * 0.1))
+        for key in ("exposure", "gain")
+    )
+    result["exposure_unstable"] = bool(
+        first.get("exposure_unstable") or second.get("exposure_unstable") or changed
+    )
     result["exposure_corrected"] = bool(
         first.get("exposure_corrected") and second.get("exposure_corrected")
     )

@@ -151,6 +151,7 @@ class TrialDialog(ToolDialog):
             cover_guard=self.cover.isChecked(),
             separate_power_curves=False,
             power_profiles=False,
+            multi_display_enabled=False,
         )
         try:
             self.engine.begin_trial(candidate)

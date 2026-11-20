@@ -130,10 +130,10 @@ def error_category(operation, message):
         if "timed out" in lower or "timeout" in lower:
             return "camera_timeout"
         return "camera_unavailable"
-    if operation == "displays" or "monitor" in lower:
-        return "display_unavailable"
     if "readback" in lower or "restoration" in lower:
         return "brightness_verification_failed"
+    if operation == "displays" or "monitor" in lower:
+        return "display_unavailable"
     if operation in ("settings", "persist"):
         return "settings_write_failed"
     if operation == "restore":

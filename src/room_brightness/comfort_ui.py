@@ -188,6 +188,10 @@ class History(QWidget):
 
 
 DIAGNOSTICS = {
+    "exposure_settling": (
+        "Camera exposure/gain is changing; brightness held until two stable cycles.",
+        "يتغير تعريض الكاميرا أو كسبها؛ السطوع ثابت حتى استقرار دورتين.",
+    ),
     "possible_cover": (
         "The camera may be covered or the room extremely dark. Brightness held; check the lens.",
         "قد تكون الكاميرا مغطاة أو الغرفة شديدة الظلام. ثُبّت السطوع؛ تحقق من العدسة.",

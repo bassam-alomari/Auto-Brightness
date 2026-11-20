@@ -7,13 +7,16 @@ from collections.abc import Callable
 from .paths import RESOURCE_DIR
 
 
-def brightness(value: int | None = None) -> int:
+def brightness(value: int | None = None, display=None) -> int:
+    if value is not None and (type(value) is not int or not 0 <= value <= 100):
+        raise ValueError("Brightness must be an integer between 0 and 100.")
     if os.name != "nt":
         raise RuntimeError("Brightness control requires Windows.")
     from . import monitors
 
-    if monitors.selected_target != "internal":
-        return monitors.brightness(value)
+    identity = monitors.selected_target if display is None else display
+    if identity != "internal":
+        return monitors.brightness(value, **({"target": display} if display is not None else {}))
     args = [
         "powershell.exe",
         "-NoProfile",
@@ -25,7 +28,7 @@ def brightness(value: int | None = None) -> int:
         "read" if value is None else "set",
     ]
     if value is not None:
-        if not isinstance(value, int) or not 0 <= value <= 100:
+        if type(value) is not int or not 0 <= value <= 100:
             raise ValueError("Brightness must be an integer between 0 and 100.")
         args += ["-Value", str(value)]
     result = subprocess.run(
@@ -72,12 +75,29 @@ def verify_control(control: Callable = brightness, original: int | None = None) 
     return original
 
 
-def smooth_to(start, target, cancel, progress, duration=4):
+def smooth_to(start, target, cancel, progress, duration=4, display=None):
     """Cancellable verified transitions for the selected internal or external display."""
+    if (
+        type(duration) is not int
+        or duration not in (1, 4, 8)
+        or type(start) is not int
+        or type(target) is not int
+        or not 0 <= start <= 100
+        or not 0 <= target <= 100
+    ):
+        raise ValueError("Invalid brightness transition.")
     from . import monitors
 
-    if monitors.selected_target != "internal":
-        return monitors.smooth(start, target, cancel, progress, duration)
+    identity = monitors.selected_target if display is None else display
+    if identity != "internal":
+        return monitors.smooth(
+            start,
+            target,
+            cancel,
+            progress,
+            duration,
+            **({"target_identity": display} if display is not None else {}),
+        )
     import queue
     import threading
     import time
@@ -127,8 +147,12 @@ def smooth_to(start, target, cancel, progress, duration=4):
                 process.terminate()
                 process.wait(timeout=5)
                 # Cancel any remaining native fade by reapplying its current level.
-                actual = brightness()
-                set_checked(actual)
+                actual = brightness(display=display) if display is not None else brightness()
+                if display is not None:
+                    if brightness(actual, display=display) != actual:
+                        raise RuntimeError("Brightness readback mismatch while cancelling.")
+                else:
+                    set_checked(actual)
                 break
             if time.monotonic() > deadline:
                 raise RuntimeError("Brightness transition timed out.")
