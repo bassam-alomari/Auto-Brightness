@@ -136,12 +136,14 @@ class MultiDisplays:
     def __init__(self):
         self.states = {}
         self.status = {}
+        self.profile_cache = {}
 
     def process(self, reading, preferences, power, cancel, now=None, factory=DisplayControl):
         from .adaptive import AdaptiveController
         from .experience import effective_curve
         from .tuning import transition_duration
         from .settings import validate
+        from .extras import PROFILE_KEYS
 
         now = time.monotonic() if now is None else now
         targets = (
@@ -159,9 +161,13 @@ class MultiDisplays:
                 if record["controller"] is None:
                     record["original"] = control.verify()
                     record["controller"] = AdaptiveController(mapping="image", expected=current)
-                profile = copy.deepcopy(preferences)
-                profile.update(preferences["display_profiles"].get(identity, {}))
-                profile = validate(profile)
+                inputs = {key: preferences[key] for key in PROFILE_KEYS}
+                inputs.update(preferences["display_profiles"].get(identity, {}))
+                cached = self.profile_cache.get(identity)
+                if cached is None or cached[0] != inputs:
+                    cached = (copy.deepcopy(inputs), validate(inputs))
+                    self.profile_cache[identity] = cached
+                profile = cached[1]
                 curve = effective_curve(profile, power)
                 controller = record["controller"]
                 controller.low, controller.high = (
@@ -169,8 +175,7 @@ class MultiDisplays:
                     if profile["power_profiles"]
                     else (profile["low"], profile["high"])
                 )
-                controller.options = profile
-                controller.options["custom_points"] = curve["points"]
+                controller.options = {**profile, "custom_points": curve["points"]}
                 controller.image_curve = curve["curve"]
                 wanted = controller.update(reading, current, now)
                 if now < controller.hold_until:
@@ -234,5 +239,6 @@ class MultiDisplays:
             except Exception:
                 results[identity] = "restore_failed"
         self.states.clear()
+        self.profile_cache.clear()
         self.status = {identity: dict(state=state) for identity, state in results.items()}
         return results

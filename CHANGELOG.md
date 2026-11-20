@@ -1,3 +1,11 @@
+# 0.10.1
+
+- Verify camera identity inside the capture subprocess, preserving two readings per cycle.
+- Reuse validated secondary display profiles until their inputs change.
+- Repaint live history on new readings or once per second while data is on the chart.
+- Reuse the initial CIM query for read-only brightness requests.
+- Reuse successful GitHub release checks for 30 seconds.
+
 # 0.10.0
 
 - Validate settings enum types before using them as dictionary keys.

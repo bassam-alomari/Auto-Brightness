@@ -99,6 +99,7 @@ def sample(
     preview=False,
     region=None,
     protection=False,
+    expected_identity=None,
 ) -> dict:
     if cancel.is_set():
         raise RuntimeError("Stopped.")
@@ -106,6 +107,11 @@ def sample(
         [sys.executable]
         + ([] if getattr(sys, "frozen", False) else ["-m", "room_brightness"])
         + ["--meter", str(index)]
+        + (
+            ["--camera-identity-json", json.dumps(expected_identity)]
+            if expected_identity is not None
+            else []
+        )
         + (["--preview"] if preview else [])
         + (["--protection"] if protection else [])
         + (["--region", ",".join(str(v) for v in region)] if region is not None else []),

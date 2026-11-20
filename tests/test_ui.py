@@ -157,16 +157,21 @@ class UITests(unittest.TestCase):
         self.assertEqual(self.app.display_value.get(), "70")
         self.assertEqual(self.app.status_state[0], "manual_hold")
 
-    def test_reordered_camera_is_never_captured(self):
+    def test_camera_worker_rejects_disconnected_or_reordered_identity(self):
         self.app.running = True
         self.app.controller = AdaptiveController(expected=40)
         with (
-            patch.object(self.ui, "list_devices", return_value=[dict(self.device, index=1)]),
-            patch.object(self.ui, "sample") as reader,
+            patch.object(self.ui, "list_devices") as discover,
+            patch.object(
+                self.ui,
+                "sample",
+                side_effect=RuntimeError("Selected camera disconnected or reordered."),
+            ) as reader,
         ):
             self.app.tick()
             self.wait_worker()
-            reader.assert_not_called()
+            discover.assert_not_called()
+            self.assertEqual(reader.call_args.kwargs["expected_identity"], self.device["id"])
         self.assertFalse(self.app.running)
 
     def test_settings_sliders_and_theme_persist_without_start(self):

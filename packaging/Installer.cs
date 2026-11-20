@@ -13,7 +13,7 @@ class Installer {
    if(args[i]=="--restart")restart=true;
   }
   string root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Programs","AutoBrightness");
-  if(MessageBox.Show("Install Auto Brightness 0.10.0 for your Windows account?\n\nPersonal settings and curves are preserved.\n\n"+root,"Auto Brightness Setup",MessageBoxButtons.OKCancel,MessageBoxIcon.Information)!=DialogResult.OK)return;
+  if(MessageBox.Show("Install Auto Brightness 0.10.1 for your Windows account?\n\nPersonal settings and curves are preserved.\n\n"+root,"Auto Brightness Setup",MessageBoxButtons.OKCancel,MessageBoxIcon.Information)!=DialogResult.OK)return;
   string staging=Path.Combine(Path.GetTempPath(),"AutoBrightness-"+Guid.NewGuid().ToString("N"));
   try {
    if(waitPid>0){try{using(Process previous=Process.GetProcessById(waitPid)){if(!previous.WaitForExit(120000))throw new Exception("The app is still running. Close it and try again.");}}catch(ArgumentException){}}

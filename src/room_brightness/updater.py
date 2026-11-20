@@ -169,12 +169,21 @@ class UpdateClient:
         self.release = self.path = None
         self.progress = 0
         self.last_attempt = None
+        self.last_success = None
+        self.checked_version = None
         self.closed = False
 
     def check(self, version, automatic_download=False):
         import threading
 
-        if self.busy:
+        if self.closed or self.busy:
+            return
+        now = time.monotonic()
+        if (
+            self.checked_version == version
+            and self.last_success is not None
+            and now - self.last_success < 30
+        ):
             return
         self.busy = True
         self.state = "checking"
@@ -184,6 +193,8 @@ class UpdateClient:
             try:
                 self.release = check(version)
                 self.state = "available" if self.release else "current"
+                self.last_success = time.monotonic()
+                self.checked_version = version
                 if (
                     self.release is None
                     or self.path
@@ -191,6 +202,7 @@ class UpdateClient:
                 ):
                     self.path = None
             except Exception:
+                self.last_success = None
                 self.release = self.path = None
                 self.progress = 0
                 self.state = "check_error"

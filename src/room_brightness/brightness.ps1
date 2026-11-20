@@ -23,6 +23,6 @@ try {
   } while([DateTime]::UtcNow -lt $deadline)
   throw "Brightness readback mismatch: requested $Value%, received $($actual[0].CurrentBrightness)%"
  }
- $b=Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness | Where-Object Active
- Write-Output ([int]$b.CurrentBrightness)
+ if($null -eq $b[0].CurrentBrightness){throw "Brightness readback unavailable"}
+ Write-Output ([int]$b[0].CurrentBrightness)
 } catch {[Console]::Error.WriteLine($_.Exception.Message);exit 1}

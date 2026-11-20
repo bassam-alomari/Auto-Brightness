@@ -126,6 +126,19 @@ class MultiDisplayTests(unittest.TestCase):
         self.assertEqual(self.controls["a"].current, 42)
         self.assertEqual(self.controls["b"].current, 50)
 
+    def test_reuses_profiles_and_invalidates_only_changed_display(self):
+        from room_brightness.settings import validate
+
+        with patch("room_brightness.settings.validate", wraps=validate) as validate_profile:
+            self.run_cycle()
+            self.assertEqual(validate_profile.call_count, 2)
+            self.run_cycle(1)
+            self.assertEqual(validate_profile.call_count, 2)
+            self.options["display_profiles"]["b"]["high"] = 25
+            self.run_cycle(2)
+            self.assertEqual(validate_profile.call_count, 3)
+        self.assertEqual(self.controls["b"].current, 25)
+
     def test_cancel_prevents_any_control_and_primary_is_not_duplicated(self):
         self.cancel.set()
         self.run_cycle()

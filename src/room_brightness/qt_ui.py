@@ -1310,7 +1310,8 @@ class Window(
                 if client.release
                 else self.tr("Current version: ", "الإصدار الحالي: ") + __version__
             )
-            self.update_label.setText(self.update_message)
+            if self.update_label.text() != self.update_message:
+                self.update_label.setText(self.update_message)
             self.update_link.setEnabled(bool(self.pending_update))
         if self.page == "home":
             labels = [
@@ -1347,7 +1348,12 @@ class Window(
                 and self.engine.trial_original is None
             )
             self.displays_refresh.setEnabled(not self.engine.running and not self.engine.busy)
-            self.history_chart.update()
+            last_row = self.engine.history[-1] if self.engine.history else None
+            now = time.monotonic()
+            chart_key = (last_row, int(now) if last_row and now - last_row[0] <= 60 else None)
+            if chart_key != getattr(self.history_chart, "rendered_history_key", None):
+                self.history_chart.rendered_history_key = chart_key
+                self.history_chart.update()
             reason = self.engine.diagnostic
             if "timed" in self.engine.pause_reasons:
                 message = self.tr(
@@ -1363,7 +1369,8 @@ class Window(
                 message = self.tr(
                     *DIAGNOSTICS.get(reason, ("Ready for a light reading", "جاهز لقراءة الضوء"))
                 )
-            self.diagnostics_label.setText(message)
+            if self.diagnostics_label.text() != message:
+                self.diagnostics_label.setText(message)
 
     def glass_alpha(self, clear, tinted):
         return round(clear + (tinted - clear) * self.engine.preferences["glass_tint"] / 100)

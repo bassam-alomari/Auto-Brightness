@@ -23,6 +23,7 @@ def main():
     parser.add_argument("--self-test", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--protection", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--region", default="0,0,1,1", help=argparse.SUPPRESS)
+    parser.add_argument("--camera-identity-json", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if os.name != "nt":
         parser.exit(1, "Auto Brightness requires Windows 10 or Windows 11.\n")
@@ -42,6 +43,17 @@ def main():
         from .camera import camera_sample
 
         try:
+            if args.camera_identity_json is not None:
+                from .devices import native_devices
+
+                identity = json.loads(args.camera_identity_json)
+                if not any(
+                    device["id"] == identity and device["index"] == index
+                    for device in native_devices()
+                ):
+                    raise RuntimeError(
+                        "Selected camera disconnected or reordered. Refresh cameras and try again."
+                    )
             reading = camera_sample(
                 index,
                 preview=args.preview,

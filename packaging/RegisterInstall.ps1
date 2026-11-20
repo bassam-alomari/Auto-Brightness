@@ -30,7 +30,7 @@ foreach($path in @($menu,$desktop)){
  $link=$shell.CreateShortcut($path);$link.TargetPath=$app;$link.WorkingDirectory=$InstallRoot;$link.IconLocation="$app,0";$link.Save()
 }
 New-Item -Path $key -Force | Out-Null
-$values=@{DisplayName='Auto Brightness';DisplayVersion='0.10.0';Publisher='Auto Brightness';InstallLocation=$InstallRoot;DisplayIcon=$app;UninstallString=('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $InstallRoot 'Uninstall.ps1')+'"')}
+$values=@{DisplayName='Auto Brightness';DisplayVersion='0.10.1';Publisher='Auto Brightness';InstallLocation=$InstallRoot;DisplayIcon=$app;UninstallString=('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "'+(Join-Path $InstallRoot 'Uninstall.ps1')+'"')}
 foreach($name in $values.Keys){New-ItemProperty -Path $key -Name $name -Value $values[$name] -PropertyType String -Force | Out-Null}
 if((Get-ItemProperty -Path $run -Name RoomBrightness -ErrorAction SilentlyContinue).RoomBrightness){Set-ItemProperty -Path $run -Name RoomBrightness -Value ('"'+$app+'" --autostart')}
 }catch{

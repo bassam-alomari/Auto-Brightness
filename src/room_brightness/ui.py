@@ -764,17 +764,12 @@ class App:
         device = self.selected_device()
 
         def update():
-            devices = list_devices()
-            chosen = next((item for item in devices if item["id"] == device["id"]), None)
-            if chosen is None or chosen["index"] != device["index"]:
-                raise RuntimeError(
-                    "Selected camera disconnected or reordered. Refresh cameras and try again."
-                )
             reading = sample(
                 device["index"],
                 self.cancel,
                 preview=self.preview_enabled,
                 region=self.preferences.get("meter_region"),
+                expected_identity=device["id"],
                 **({"protection": True} if self.preferences.get("spatial_protection") else {}),
             )
             if hasattr(self, "performance"):
