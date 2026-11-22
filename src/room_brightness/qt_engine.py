@@ -418,10 +418,10 @@ class Engine(ReviewEngine, Experience, Lifecycle, ui.App):
         from . import monitors
 
         previous = self.preferences["display_target"]
-        self.preferences["display_profiles"][previous] = {
+        settings = copy.deepcopy(self.preferences)
+        settings["display_profiles"][previous] = {
             key: copy.deepcopy(self.preferences[key]) for key in PROFILE_KEYS
         }
-        settings = copy.deepcopy(self.preferences)
         settings["display_target"] = identity
         settings.update(settings["display_profiles"].get(identity, {}))
         self.apply_preferences(settings)

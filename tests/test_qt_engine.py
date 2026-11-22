@@ -202,6 +202,18 @@ class NativeEngineTests(unittest.TestCase):
         self.engine.select_display("external")
         self.assertEqual((self.engine.low.get(), self.engine.high.get()), (0, 100))
 
+    def test_failed_display_save_preserves_runtime_and_profiles(self):
+        import copy
+        from room_brightness import monitors
+
+        before = copy.deepcopy(self.engine.preferences)
+        route = monitors.selected_target
+        with patch("room_brightness.settings.save_settings", side_effect=OSError("test")):
+            with self.assertRaises(ValueError):
+                self.engine.select_display("external")
+        self.assertEqual(self.engine.preferences, before)
+        self.assertEqual(monitors.selected_target, route)
+
     def test_undo_restores_previous_saved_curve(self):
         original = [point[:] for point in self.engine.preferences["custom_points"]]
         self.engine.remember_curve()
