@@ -26,6 +26,6 @@ result = subprocess.run(
     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
 )
 (output / "install-checks.txt").write_text(result.stdout + result.stderr, encoding="utf-8")
-if result.returncode or "INSTALL CORE CHECKS PASSED: 16" not in result.stdout:
+if result.returncode or "INSTALL CORE CHECKS PASSED: 18" not in result.stdout:
     raise RuntimeError("Installation transaction checks failed: " + result.stdout + result.stderr)
-print("16 Windows installation transaction checks passed (isolated file-system fixtures).")
+print("18 Windows installation transaction checks passed (isolated file-system fixtures).")

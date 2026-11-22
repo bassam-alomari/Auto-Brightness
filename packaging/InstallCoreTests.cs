@@ -17,6 +17,10 @@ class InstallCoreTests {
    Check(!InstallCore.Install(one,root)&&Version(root)=="one","first-install");
    Check(InstallCore.Install(two,root)&&Version(root)=="two"&&Version(InstallCore.Previous(root))=="one","update-keeps-previous");
    InstallCore.Rollback(root);Check(Version(root)=="one"&&Version(InstallCore.Previous(root))=="two","rollback-directory-swap");
+   using(var gate=new FileStream(root+"-install.lock",FileMode.Open,FileAccess.ReadWrite,FileShare.None)){
+    Refused(()=>InstallCore.Install(three,root),"concurrent-install-refused");
+   }
+   Check(Version(root)=="one"&&Version(InstallCore.Previous(root))=="two","competing-install-preserves-both-versions");
    string bad=Path.Combine(parent,"bad");Directory.CreateDirectory(bad);
    Refused(()=>InstallCore.Install(bad,root),"incomplete-payload-refused");Check(Version(root)=="one","failed-update-keeps-current");
    string unknown=Path.Combine(parent,"unknown");Directory.CreateDirectory(unknown);File.WriteAllText(Path.Combine(unknown,"user.txt"),"keep");
