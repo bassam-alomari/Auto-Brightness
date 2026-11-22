@@ -792,6 +792,8 @@ class App:
                 self.original = current
             if wanted != current and (not self.cancel.is_set()):
                 fresh = brightness()
+                if self.cancel.is_set():
+                    return None
                 if self.controller.observe(fresh, time.monotonic()):
                     current = fresh
                     self.original = current

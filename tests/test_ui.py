@@ -157,6 +157,29 @@ class UITests(unittest.TestCase):
         self.assertEqual(self.app.display_value.get(), "70")
         self.assertEqual(self.app.status_state[0], "manual_hold")
 
+    def test_stop_during_final_read_never_starts_fade(self):
+        self.app.running = True
+        self.app.controller = AdaptiveController(mapping="image", expected=40)
+        self.root.qt_native = True
+        reading = dict(level=27, score=0, confidence=1)
+        self.app.pair_first = reading
+
+        def final_read():
+            if read.call_count == 2:
+                self.app.running = False
+                self.app.cancel.set()
+            return 40
+
+        with (
+            patch.object(self.ui, "sample", return_value=reading),
+            patch.object(self.ui, "brightness", side_effect=final_read) as read,
+            patch.object(self.ui, "smooth_to") as fade,
+        ):
+            self.app.tick()
+            self.wait_worker()
+            self.assertEqual(read.call_count, 2)
+            fade.assert_not_called()
+
     def test_camera_worker_rejects_disconnected_or_reordered_identity(self):
         self.app.running = True
         self.app.controller = AdaptiveController(expected=40)
