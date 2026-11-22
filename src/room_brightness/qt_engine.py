@@ -423,6 +423,10 @@ class Engine(ReviewEngine, Experience, Lifecycle, ui.App):
             key: copy.deepcopy(self.preferences[key]) for key in PROFILE_KEYS
         }
         settings["display_target"] = identity
+        profiles = settings["display_profiles"]
+        old_route = monitors.previous_profile(identity, profiles, {d["id"] for d in self.displays})
+        if old_route is not None:
+            profiles[identity] = profiles.pop(old_route)
         settings.update(settings["display_profiles"].get(identity, {}))
         self.apply_preferences(settings)
         monitors.select(identity)

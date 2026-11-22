@@ -202,6 +202,20 @@ class NativeEngineTests(unittest.TestCase):
         self.engine.select_display("external")
         self.assertEqual((self.engine.low.get(), self.engine.high.get()), (0, 100))
 
+    def test_selecting_reconnected_display_recovers_only_unambiguous_profile(self):
+        import json
+
+        old, new, other = [json.dumps(["device-id", f"route-{i}", i, "Display"]) for i in range(3)]
+        self.engine.preferences["display_profiles"][old] = {"low": 24, "high": 70}
+        self.engine.displays = [{"id": new}, {"id": other}]
+        self.engine.select_display(new)
+        self.assertEqual(self.engine.low.get(), 10)
+        self.engine.select_display("internal")
+        self.engine.preferences["display_profiles"].pop(new)
+        self.engine.displays = [{"id": new}]
+        self.engine.select_display(new)
+        self.assertEqual((self.engine.low.get(), self.engine.high.get()), (24, 70))
+
     def test_failed_display_save_preserves_runtime_and_profiles(self):
         import copy
         from room_brightness import monitors

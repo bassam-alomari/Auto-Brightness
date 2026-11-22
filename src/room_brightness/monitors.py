@@ -39,6 +39,27 @@ def select(target):
     selected_target = target
 
 
+def previous_profile(target, saved, connected):
+    """Find a previous profile only when the device identity is unambiguous."""
+
+    def device_id(route):
+        try:
+            fields = json.loads(route)
+        except (TypeError, ValueError):
+            return None
+        if isinstance(fields, list) and len(fields) == 4 and isinstance(fields[0], str):
+            return fields[0].strip().casefold() or None
+        return None
+
+    identity = device_id(target)
+    if identity is None or target in saved or target not in connected:
+        return None
+    if sum(device_id(route) == identity for route in connected) != 1:
+        return None
+    matches = [route for route in saved if device_id(route) == identity]
+    return matches[0] if len(matches) == 1 and matches[0] not in connected else None
+
+
 class Native:
     def __init__(self):
         self.api = ctypes.WinDLL("dxva2", use_last_error=True)
