@@ -1,5 +1,30 @@
 # Auto Brightness
 
+### Experimental Linux preview
+
+Install from source with `python -m pip install .` in a virtual environment, or
+download the wheel from the Linux preview workflow artifacts. List the available
+device paths with `room-brightness-linux --list`.
+
+```sh
+room-brightness-linux --camera /dev/video0 --backlight /sys/class/backlight/intel_backlight --check
+room-brightness-linux --camera /dev/video0 --backlight /sys/class/backlight/intel_backlight --watch
+```
+
+Replace the example paths with those reported on your computer. Prefer a stable
+`/dev/v4l/by-id/` path when available. The compatibility check reads the screen
+and captures a light sample. Watch mode prints decisions. Add `--apply` to
+allow brightness writes, using your distribution's device permissions.
+Press Ctrl+C to exit. The preview controls one screen per process.
+
+For an external DDC/CI monitor, install `ddcutil` and use `--ddc-edid` instead
+of `--backlight`. Pass the first 128 bytes of the desired connector's
+`/sys/class/drm/*/edid` as 256 hex characters. The preview rejects missing or
+duplicate EDIDs. See [ddcutil display selection](https://www.ddcutil.com/display_selection/).
+
+The Linux preview runs in the terminal. The existing desktop UI and its
+installer, tray, and login integration are for Windows.
+
 A local Windows app that adjusts selected internal and supported DDC/CI external-display brightness from the average of two camera readings. Images stay in memory: no saved photos, recording or uploads. Image brightness is a heuristic, not calibrated room illuminance or a trained AI model.
 
 ## Run
