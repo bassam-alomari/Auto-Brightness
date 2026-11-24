@@ -101,6 +101,17 @@ def capture(path):
     return json.loads(result.stdout)
 
 
+def power_mode(root=Path("/sys/class/power_supply")):
+    external = []
+    for supply in root.iterdir() if root.is_dir() else ():
+        try:
+            if (supply / "type").read_text().strip() in {"Mains", "USB", "USB_C", "USB_PD"}:
+                external.append((supply / "online").read_text().strip() == "1")
+        except OSError:
+            continue
+    return "battery" if external and not any(external) else "ac"
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Experimental Linux brightness control")
     parser.add_argument("--list", action="store_true", help="List camera and backlight paths")
@@ -112,7 +123,12 @@ def main(argv=None):
         "--apply", action="store_true", help="Allow writes to the selected backlight"
     )
     parser.add_argument("--watch", action="store_true", help="Continue until Ctrl+C")
+    parser.add_argument(
+        "--check", action="store_true", help="Check selected devices without writing"
+    )
     options = parser.parse_args(argv)
+    if options.check and (options.apply or options.watch):
+        parser.error("--check cannot be combined with --apply or --watch.")
     if not sys.platform.startswith("linux"):
         parser.error("This entry point requires Linux.")
     if options.list:
@@ -136,8 +152,24 @@ def main(argv=None):
         parser.error("Select a backlight under /sys/class/backlight.")
     try:
         device = DdcDisplay(options.ddc_edid) if options.ddc_edid else Backlight(options.backlight)
+        current = device.read()
+        if options.check:
+            reading = capture(options.camera)
+            print(
+                json.dumps(
+                    {
+                        "camera": str(options.camera),
+                        "display": str(options.backlight or "DDC/CI"),
+                        "current": current,
+                        "camera_level": reading["level"],
+                        "power": power_mode(),
+                        "write_tested": False,
+                    }
+                )
+            )
+            return
         controller = AdaptiveController(
-            low=10, high=80, mapping="image", options=DEFAULTS.copy(), expected=device.read()
+            low=10, high=80, mapping="image", options=DEFAULTS.copy(), expected=current
         )
         session = ControlSession(controller, device.read, device.write, monitor=not options.apply)
         while True:
@@ -147,8 +179,12 @@ def main(argv=None):
             print(json.dumps(vars(decision)), flush=True)
             if not options.watch:
                 break
-            time.sleep(5)
+            time.sleep(DEFAULTS["interval_" + power_mode()])
     except KeyboardInterrupt:
         return
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:
         parser.exit(1, str(error) + "\n")
+
+
+if __name__ == "__main__":
+    main()
