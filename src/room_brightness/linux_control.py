@@ -3,6 +3,7 @@
 import argparse
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
@@ -40,6 +41,53 @@ class Backlight:
         return actual
 
 
+class DdcDisplay:
+    def __init__(self, edid):
+        if not re.fullmatch(r"[0-9a-fA-F]{256}", edid):
+            raise ValueError("Expected the 256 hex characters of a monitor's base EDID")
+        self.edid = edid.lower()
+
+    def _command(self, *args):
+        matches = sum(
+            path.read_bytes()[:128].hex() == self.edid
+            for path in Path("/sys/class/drm").glob("*/edid")
+        )
+        if matches != 1:
+            raise RuntimeError("The selected display EDID is missing or ambiguous")
+        result = subprocess.run(
+            ["ddcutil", "--edid", self.edid, *args],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode:
+            raise RuntimeError("DDC/CI command failed. Check monitor support and permissions.")
+        return result.stdout
+
+    def _levels(self):
+        match = re.search(r"^VCP 10 C (\d+) (\d+)$", self._command("--terse", "getvcp", "10"), re.M)
+        if match:
+            value, maximum = map(int, match.groups())
+            if maximum > 0 and 0 <= value <= maximum:
+                return value, maximum
+        raise RuntimeError("Unexpected DDC brightness response")
+
+    def read(self):
+        value, maximum = self._levels()
+        return round(value * 100 / maximum)
+
+    def write(self, value):
+        if type(value) is not int or not 1 <= value <= 100:
+            raise ValueError("Display target must be between 1 and 100")
+        _, maximum = self._levels()
+        raw = max(1, round(value * maximum / 100))
+        self._command("setvcp", "10", str(raw))
+        actual, new_maximum = self._levels()
+        if actual != raw or new_maximum != maximum:
+            raise RuntimeError("DDC brightness readback did not match")
+        return round(actual * 100 / maximum)
+
+
 def capture(path):
     worker = (
         "import json,sys; from room_brightness.camera import camera_sample; "
@@ -57,7 +105,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Experimental Linux brightness control")
     parser.add_argument("--list", action="store_true", help="List camera and backlight paths")
     parser.add_argument("--camera", type=Path)
-    parser.add_argument("--backlight", type=Path)
+    display = parser.add_mutually_exclusive_group()
+    display.add_argument("--backlight", type=Path)
+    display.add_argument("--ddc-edid")
     parser.add_argument(
         "--apply", action="store_true", help="Allow writes to the selected backlight"
     )
@@ -77,15 +127,15 @@ def main(argv=None):
             )
         )
         return
-    if options.camera is None or options.backlight is None:
-        parser.error("Specify --camera and --backlight using the paths from --list.")
-    if (
+    if options.camera is None or not (options.backlight or options.ddc_edid):
+        parser.error("Specify --camera and either --backlight or --ddc-edid.")
+    if options.backlight is not None and (
         Path("/sys/class/backlight") not in options.backlight.absolute().parents
         or ".." in options.backlight.parts
     ):
         parser.error("Select a backlight under /sys/class/backlight.")
     try:
-        device = Backlight(options.backlight)
+        device = DdcDisplay(options.ddc_edid) if options.ddc_edid else Backlight(options.backlight)
         controller = AdaptiveController(
             low=10, high=80, mapping="image", options=DEFAULTS.copy(), expected=device.read()
         )
