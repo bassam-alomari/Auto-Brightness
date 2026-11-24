@@ -24,9 +24,7 @@ def camera_sample(index: int | str, preview=False, region=None, protection=False
     cap = cv2.VideoCapture(index, cv2.CAP_V4L2 if isinstance(index, str) else cv2.CAP_DSHOW)
     try:
         if not cap.isOpened():
-            raise RuntimeError(
-                "Camera unavailable. Close video apps and check camera permissions."
-            )
+            raise RuntimeError("Camera unavailable. Close video apps and check camera permissions.")
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
         started = time.monotonic()
