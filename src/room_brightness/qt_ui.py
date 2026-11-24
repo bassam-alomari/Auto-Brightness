@@ -1497,6 +1497,7 @@ class Window(
 
     def change_limit(self, key, value):
         e = self.engine
+        previous = (e.low.get(), e.high.get())
         if key == "minimum":
             e.low.set(min(value, e.high.get() - 1))
             self.low_spin.blockSignals(True)
@@ -1507,15 +1508,24 @@ class Window(
             self.high_spin.blockSignals(True)
             self.high_spin.setValue(e.high.get())
             self.high_spin.blockSignals(False)
-        e.persist()
+        if not e.persist():
+            e.low.set(previous[0])
+            e.high.set(previous[1])
+            e.preferences.update(low=previous[0], high=previous[1])
+            self.build()
+            return
         self.curve.update()
 
     def change_curve(self, index):
         key = list(CURVES)[index]
+        previous = self.engine.preferences["brightness_curve"]
         self.engine.preferences["brightness_curve"] = key
+        if not self.engine.persist():
+            self.engine.preferences["brightness_curve"] = previous
+            self.build()
+            return
         if self.engine.controller:
             self.engine.controller.image_curve = key
-        self.engine.persist()
         self.curve.update()
 
     def interval_change(self, var, value):
