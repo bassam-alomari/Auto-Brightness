@@ -22,6 +22,7 @@ classifiers = [
 
 [project.scripts]
 room-brightness = "room_brightness.__main__:main"
+room-brightness-linux = "room_brightness.linux_control:main"
 
 [project.optional-dependencies]
 windows-build = ["pyinstaller==6.19.0"]

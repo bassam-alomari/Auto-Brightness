@@ -9,7 +9,7 @@ import threading
 import time
 
 
-def camera_sample(index: int, preview=False, region=None, protection=False) -> dict:
+def camera_sample(index: int | str, preview=False, region=None, protection=False) -> dict:
     from .extras import valid_region
 
     region = [0, 0, 1, 1] if region is None else list(region)
@@ -21,11 +21,11 @@ def camera_sample(index: int, preview=False, region=None, protection=False) -> d
 
     opened_at = time.monotonic()
     cpu_started = time.process_time()
-    cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+    cap = cv2.VideoCapture(index, cv2.CAP_V4L2 if isinstance(index, str) else cv2.CAP_DSHOW)
     try:
         if not cap.isOpened():
             raise RuntimeError(
-                "Camera unavailable. Close video apps and check Windows camera permissions."
+                "Camera unavailable. Close video apps and check camera permissions."
             )
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
@@ -50,7 +50,7 @@ def camera_sample(index: int, preview=False, region=None, protection=False) -> d
 
                     frame, mask = protected_frame(frame)
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                exposure = cap.get(cv2.CAP_PROP_EXPOSURE)
+                exposure = None if isinstance(index, str) else cap.get(cv2.CAP_PROP_EXPOSURE)
                 features = scene_features(frame)
                 measured = analyze_frame(gray, exposure)
                 measured.update(features)
