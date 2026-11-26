@@ -15,6 +15,9 @@ jobs:
       - run: python -m ruff format --check src tests
       - run: python -m unittest discover -s tests -p test_control_session.py -v
       - run: python -m unittest discover -s tests -p test_linux_control.py -v
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1
       - run: python -m build
       - run: |
           python -m venv /tmp/autobrightness-preview
