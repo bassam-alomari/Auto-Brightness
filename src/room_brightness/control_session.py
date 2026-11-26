@@ -30,10 +30,10 @@ class ControlSession:
         with self._lock:
             return self._generation
 
-    def evaluate(self, reading, generation):
+    def evaluate(self, reading, generation, cancelled=lambda: False):
         current = self.read()
         with self._lock:
-            if generation != self._generation:
+            if generation != self._generation or cancelled():
                 return Decision(current, current, "cancelled")
             target = self.controller.update(reading, current, time.monotonic())
             reason = self.controller.reason
@@ -41,7 +41,7 @@ class ControlSession:
             return Decision(current, target, reason)
         fresh = self.read()
         with self._lock:
-            if generation != self._generation:
+            if generation != self._generation or cancelled():
                 return Decision(fresh, fresh, "cancelled")
             if self.controller.observe(fresh, time.monotonic()):
                 return Decision(fresh, fresh, "manual_hold")

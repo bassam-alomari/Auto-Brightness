@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from threading import Event
 import time
 
 from .adaptive import AdaptiveController
@@ -88,17 +89,65 @@ class DdcDisplay:
         return round(actual * 100 / maximum)
 
 
-def capture(path):
+def capture(path, cancelled=lambda: False):
     worker = (
         "import json,sys; from room_brightness.camera import camera_sample; "
         "print(json.dumps(camera_sample(sys.argv[1])))"
     )
-    result = subprocess.run(
-        [sys.executable, "-c", worker, str(path)], capture_output=True, text=True, timeout=15
+    deadline = time.monotonic() + 15
+    with subprocess.Popen(
+        [sys.executable, "-c", worker, str(path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    ) as process:
+        try:
+            while not cancelled() and time.monotonic() < deadline:
+                try:
+                    output, _ = process.communicate(timeout=0.1)
+                except subprocess.TimeoutExpired:
+                    continue
+                if process.returncode:
+                    raise RuntimeError("Camera capture failed. Check device permissions.")
+                return json.loads(output)
+            if cancelled():
+                raise InterruptedError("Capture stopped")
+            raise TimeoutError("Camera capture timed out")
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.communicate()
+
+
+def run_session(camera, device, stop, report, *, monitor=True, watch=True, restore=False):
+    original = device.read()
+    controller = AdaptiveController(
+        low=10, high=80, mapping="image", options=DEFAULTS.copy(), expected=original
     )
-    if result.returncode:
-        raise RuntimeError("Camera capture failed. Check the device and its permissions.")
-    return json.loads(result.stdout)
+    last_write = None
+
+    def write(target):
+        nonlocal last_write
+        last_write = device.write(target)
+        return last_write
+
+    session = ControlSession(controller, device.read, write, monitor=monitor)
+    try:
+        while not stop.is_set():
+            generation = session.generation()
+            first = capture(camera, stop.is_set)
+            second = capture(camera, stop.is_set)
+            decision = session.evaluate(average_pair(first, second), generation, stop.is_set)
+            report(vars(decision))
+            if not watch or stop.wait(DEFAULTS["interval_" + power_mode()]):
+                break
+    except InterruptedError:
+        if not stop.is_set():
+            raise
+    finally:
+        if restore and last_write is not None:
+            if device.read() == last_write and not controller.manual_reference:
+                device.write(original)
 
 
 def power_mode(root=Path("/sys/class/power_supply")):
@@ -125,6 +174,9 @@ def main(argv=None):
     parser.add_argument("--watch", action="store_true", help="Continue until Ctrl+C")
     parser.add_argument(
         "--check", action="store_true", help="Check selected devices without writing"
+    )
+    parser.add_argument(
+        "--restore", action="store_true", help="Restore brightness on exit after an automatic write"
     )
     options = parser.parse_args(argv)
     if options.check and (options.apply or options.watch):
@@ -168,18 +220,15 @@ def main(argv=None):
                 )
             )
             return
-        controller = AdaptiveController(
-            low=10, high=80, mapping="image", options=DEFAULTS.copy(), expected=current
+        run_session(
+            options.camera,
+            device,
+            Event(),
+            lambda row: print(json.dumps(row), flush=True),
+            monitor=not options.apply,
+            watch=options.watch,
+            restore=options.restore,
         )
-        session = ControlSession(controller, device.read, device.write, monitor=not options.apply)
-        while True:
-            generation = session.generation()
-            reading = average_pair(capture(options.camera), capture(options.camera))
-            decision = session.evaluate(reading, generation)
-            print(json.dumps(vars(decision)), flush=True)
-            if not options.watch:
-                break
-            time.sleep(DEFAULTS["interval_" + power_mode()])
     except KeyboardInterrupt:
         return
     except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as error:

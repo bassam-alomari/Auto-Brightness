@@ -1,12 +1,34 @@
 from pathlib import Path
 import tempfile
 import unittest
+from threading import Event
 from unittest.mock import patch
 
-from room_brightness.linux_control import Backlight, DdcDisplay, main
+from room_brightness.linux_control import Backlight, DdcDisplay, main, run_session
 
 
 class LinuxBacklightTests(unittest.TestCase):
+    def test_restore_keeps_external_manual_adjustment(self):
+        from unittest.mock import Mock
+
+        reading = {"level": 40, "confidence": 1, "score": 0}
+        for final, expected in ((80, [80, 40]), (55, [80])):
+            device = Mock()
+            device.read.side_effect = [40, 40, 40, 40, final]
+            device.write.side_effect = lambda value: value
+            stop = Event()
+
+            def report(row):
+                if row["applied"]:
+                    stop.set()
+
+            with (
+                patch("room_brightness.linux_control.capture", return_value=reading),
+                patch.object(stop, "wait", return_value=False),
+            ):
+                run_session("/dev/video0", device, stop, report, monitor=False, restore=True)
+            self.assertEqual([call.args[0] for call in device.write.call_args_list], expected)
+
     def test_compatibility_check_reads_without_writing(self):
         with (
             patch("sys.platform", "linux"),
