@@ -125,20 +125,34 @@ def run_session(camera, device, stop, report, *, monitor=True, watch=True, resto
         low=10, high=80, mapping="image", options=DEFAULTS.copy(), expected=original
     )
     last_write = None
+    write_ms = None
 
     def write(target):
-        nonlocal last_write
+        nonlocal last_write, write_ms
+        started = time.monotonic()
         last_write = device.write(target)
+        write_ms = round((time.monotonic() - started) * 1000)
         return last_write
 
     session = ControlSession(controller, device.read, write, monitor=monitor)
     try:
         while not stop.is_set():
             generation = session.generation()
+            capture_started = time.monotonic()
             first = capture(camera, stop.is_set)
             second = capture(camera, stop.is_set)
+            capture_ms = round((time.monotonic() - capture_started) * 1000)
+            write_ms = None
+            decision_started = time.monotonic()
             decision = session.evaluate(average_pair(first, second), generation, stop.is_set)
-            report(vars(decision))
+            report(
+                {
+                    **vars(decision),
+                    "capture_ms": capture_ms,
+                    "decision_and_io_ms": round((time.monotonic() - decision_started) * 1000),
+                    "write_and_readback_ms": write_ms,
+                }
+            )
             if not watch or stop.wait(DEFAULTS["interval_" + power_mode()]):
                 break
     except InterruptedError:

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import sys
+import time
 from threading import Event, Thread
 
 from PySide6.QtCore import Signal
@@ -28,6 +29,7 @@ class LinuxWindow(QWidget):
         self.setWindowTitle("Auto Brightness · Linux preview")
         self.resize(480, 350)
         self.stop = Event()
+        self.stop_requested_at = None
         self.worker = None
         layout = QVBoxLayout(self)
         self.camera = QComboBox()
@@ -67,7 +69,7 @@ class LinuxWindow(QWidget):
             layout.addWidget(control)
         self.check.clicked.connect(lambda: self.launch(check=True))
         self.start.clicked.connect(lambda: self.launch(check=False))
-        self.stop_button.clicked.connect(self.stop.set)
+        self.stop_button.clicked.connect(self.request_stop)
         self.status.connect(self.details.setText)
         self.done.connect(lambda: self.set_busy(False))
         self.set_busy(False)
@@ -85,6 +87,11 @@ class LinuxWindow(QWidget):
             control.setEnabled(not busy)
         self.stop_button.setEnabled(busy)
 
+    def request_stop(self):
+        if self.stop_requested_at is None:
+            self.stop_requested_at = time.monotonic()
+        self.stop.set()
+
     def launch(self, check):
         if self.worker and self.worker.is_alive():
             return
@@ -97,6 +104,7 @@ class LinuxWindow(QWidget):
         external = self.display.currentData() == "ddc"
         monitor, restore = self.monitor.isChecked(), self.restore.isChecked()
         self.stop.clear()
+        self.stop_requested_at = None
         self.set_busy(True)
         self.details.setText("Reading devices…")
 
@@ -116,13 +124,20 @@ class LinuxWindow(QWidget):
                         self.status.emit(
                             f"{action} · Screen {row['current']}% · Target {row['target']}%"
                             f" · {row['reason'] or 'curve'}"
+                            f"\nCapture: {row['capture_ms']} ms · Decision and display I/O:"
+                            f" {row['decision_and_io_ms']} ms"
+                            + (
+                                f" · Write and verification: {row['write_and_readback_ms']} ms"
+                                if row["write_and_readback_ms"] is not None
+                                else ""
+                            )
                         )
 
                     run_session(camera, device, self.stop, report, monitor=monitor, restore=restore)
                 if self.stop.is_set():
-                    self.status.emit("Stopped.")
+                    self.report_stop()
             except InterruptedError:
-                self.status.emit("Stopped.")
+                self.report_stop()
             except (OSError, RuntimeError, ValueError) as error:
                 self.status.emit(str(error))
             finally:
@@ -131,9 +146,16 @@ class LinuxWindow(QWidget):
         self.worker = Thread(target=work)
         self.worker.start()
 
+    def report_stop(self):
+        started = self.stop_requested_at
+        if started is None:
+            self.status.emit("Stopped.")
+        else:
+            self.status.emit(f"Stopped in {round((time.monotonic() - started) * 1000)} ms.")
+
     def closeEvent(self, event):
         if self.worker and self.worker.is_alive():
-            self.stop.set()
+            self.request_stop()
             self.details.setText("Stopping… Close again when finished.")
             event.ignore()
             return
