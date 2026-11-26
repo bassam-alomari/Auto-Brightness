@@ -22,8 +22,19 @@ of `--backlight`. Pass the first 128 bytes of the desired connector's
 `/sys/class/drm/*/edid` as 256 hex characters. The preview rejects missing or
 duplicate EDIDs. See [ddcutil display selection](https://www.ddcutil.com/display_selection/).
 
-The Linux preview runs in the terminal. The existing desktop UI and its
-installer, tray, and login integration are for Windows.
+Launch the experimental desktop window with `room-brightness-linux-ui`.
+It opens in monitor-only mode and shows capture, display, and stop timings.
+The compatibility check reads the selected display and camera without writing.
+The window attempts to restore brightness after Stop if the display still
+matches the last automatic write and the session did not detect a manual override.
+Terminal users can enable the same behavior with `--restore`.
+
+For physical acceptance, check a laptop backlight and a DDC/CI monitor separately.
+Start with the read-only compatibility check, then run monitoring, enable writes,
+change brightness manually, and stop. Repeat with camera unplug and suspend/resume.
+Record the camera and display types, stop latency, and whether restoration succeeded.
+Ubuntu CI checks the package and desktop window without using physical devices.
+The standard installer, tray, and login integration are for Windows.
 
 A local Windows app that adjusts selected internal and supported DDC/CI external-display brightness from the average of two camera readings. Images stay in memory: no saved photos, recording or uploads. Image brightness is a heuristic, not calibrated room illuminance or a trained AI model.
 

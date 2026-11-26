@@ -20,6 +20,7 @@ jobs:
           python -m venv /tmp/autobrightness-preview
           /tmp/autobrightness-preview/bin/pip install dist/*.whl
           /tmp/autobrightness-preview/bin/room-brightness-linux --list
+          QT_QPA_PLATFORM=offscreen /tmp/autobrightness-preview/bin/python -c 'from PySide6.QtWidgets import QApplication; from room_brightness.linux_ui import LinuxWindow; app = QApplication([]); window = LinuxWindow(); assert window.monitor.isChecked(); window.show(); app.processEvents(); window.close()'
       - uses: actions/upload-artifact@v4
         with:
           name: AutoBrightness-Linux-preview
