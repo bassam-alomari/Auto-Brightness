@@ -47,16 +47,11 @@ class LinuxWindow(QWidget):
         layout = QVBoxLayout(self)
         self.camera = QComboBox()
         self.display = QComboBox()
-        cameras = sorted(Path("/dev/v4l/by-id").glob("*")) or sorted(
-            Path("/dev").glob("video[0-9]*")
-        )
-        self.camera.addItems([str(path) for path in cameras])
-        self.display.addItems(
-            [str(path) for path in sorted(Path("/sys/class/backlight").glob("*"))]
-        )
-        self.display.addItem("External monitor (DDC/CI)", "ddc")
         self.edid = QLineEdit()
         self.edid.setPlaceholderText("External monitor EDID (256 hex characters)")
+        self.refresh = QPushButton("Refresh devices")
+        self.refresh.clicked.connect(self.refresh_devices)
+        self.refresh_devices()
         self.monitor = QCheckBox("Monitor only (no brightness changes)")
         self.monitor.setChecked(True)
         self.restore = QCheckBox("Restore brightness when stopped")
@@ -76,6 +71,8 @@ class LinuxWindow(QWidget):
             value = saved.get(key)
             if isinstance(value, str) and field.findText(value) >= 0:
                 field.setCurrentText(value)
+        if isinstance(saved.get("display"), str):
+            self.display.setCurrentIndex(self.display.findData(saved["display"]))
         if isinstance(saved.get("edid"), str):
             self.edid.setText(saved["edid"])
         self.check = QPushButton("Check compatibility (read-only)")
@@ -89,6 +86,7 @@ class LinuxWindow(QWidget):
             QLabel("Display"),
             self.display,
             self.edid,
+            self.refresh,
             self.monitor,
             self.restore,
             QLabel("Curve"),
@@ -110,11 +108,42 @@ class LinuxWindow(QWidget):
         self.done.connect(lambda: self.set_busy(False))
         self.set_busy(False)
 
+    def refresh_devices(self):
+        from collections import Counter
+
+        camera, target = self.camera.currentText(), self.display.currentData()
+        cameras = sorted(Path("/dev/v4l/by-id").glob("*")) or sorted(
+            Path("/dev").glob("video[0-9]*")
+        )
+        self.camera.clear()
+        self.camera.addItems([str(path) for path in cameras])
+        if camera:
+            self.camera.setCurrentIndex(self.camera.findText(camera))
+        self.display.clear()
+        for path in sorted(Path("/sys/class/backlight").glob("*")):
+            self.display.addItem(path.name, str(path))
+        edids = []
+        for path in sorted(Path("/sys/class/drm").glob("*/edid")):
+            try:
+                data = path.read_bytes()
+            except OSError:
+                continue
+            if len(data) >= 128:
+                edids.append((path.parent.name, data[:128].hex()))
+        counts = Counter(edid for _, edid in edids)
+        for name, edid in edids:
+            if counts[edid] == 1:
+                self.display.addItem(name + " (DDC/CI)", "edid:" + edid)
+        self.display.addItem("External monitor (manual EDID)", "ddc")
+        if target is not None:
+            self.display.setCurrentIndex(self.display.findData(target))
+
     def set_busy(self, busy):
         for control in (
             self.camera,
             self.display,
             self.edid,
+            self.refresh,
             self.monitor,
             self.restore,
             self.curve,
@@ -138,9 +167,12 @@ class LinuxWindow(QWidget):
         if not camera:
             self.details.setText("No camera is listed. Connect one and reopen the preview.")
             return
-        target = self.display.currentText()
-        edid = self.edid.text().strip() if self.display.currentData() == "ddc" else ""
-        external = self.display.currentData() == "ddc"
+        target = self.display.currentData()
+        if target is None:
+            self.details.setText("Select a display from the list.")
+            return
+        external = target == "ddc" or target.startswith("edid:")
+        edid = target[5:] if target.startswith("edid:") else self.edid.text().strip()
         monitor, restore = self.monitor.isChecked(), self.restore.isChecked()
         curve, low, high = self.curve.currentText(), self.low.value(), self.high.value()
         if low >= high:
