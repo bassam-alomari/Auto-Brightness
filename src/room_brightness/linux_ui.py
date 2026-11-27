@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 
 from .adaptive import CURVES
 from .recovery import write_atomic
-from .linux_control import Backlight, DdcDisplay, capture, run_session
+from .linux_control import Backlight, DdcDisplay, capture, check_write, run_session
 
 
 class LinuxWindow(QWidget):
@@ -76,6 +76,7 @@ class LinuxWindow(QWidget):
         if isinstance(saved.get("edid"), str):
             self.edid.setText(saved["edid"])
         self.check = QPushButton("Check compatibility (read-only)")
+        self.write_check = QPushButton("Test brightness change and restore")
         self.start = QPushButton("Start")
         self.stop_button = QPushButton("Stop")
         self.details = QLabel("Choose a camera and display.")
@@ -96,12 +97,14 @@ class LinuxWindow(QWidget):
             QLabel("Maximum brightness"),
             self.high,
             self.check,
+            self.write_check,
             self.start,
             self.stop_button,
             self.details,
         ):
             layout.addWidget(control)
         self.check.clicked.connect(lambda: self.launch(check=True))
+        self.write_check.clicked.connect(lambda: self.launch(check=True, write_check=True))
         self.start.clicked.connect(lambda: self.launch(check=False))
         self.stop_button.clicked.connect(self.request_stop)
         self.status.connect(self.details.setText)
@@ -151,6 +154,7 @@ class LinuxWindow(QWidget):
             self.high,
             self.start,
             self.check,
+            self.write_check,
         ):
             control.setEnabled(not busy)
         self.stop_button.setEnabled(busy)
@@ -160,7 +164,7 @@ class LinuxWindow(QWidget):
             self.stop_requested_at = time.monotonic()
         self.stop.set()
 
-    def launch(self, check):
+    def launch(self, check, write_check=False):
         if self.worker and self.worker.is_alive():
             return
         camera = self.camera.currentText()
@@ -208,8 +212,15 @@ class LinuxWindow(QWidget):
                 if check:
                     current = device.read()
                     reading = capture(camera, self.stop.is_set)
+                    if write_check and not self.stop.is_set():
+                        check_write(device)
                     self.status.emit(
                         f"Display: {current}% · Camera level: {reading['level']:.1f}/255"
+                        + (
+                            " · Write and restore passed"
+                            if write_check and not self.stop.is_set()
+                            else ""
+                        )
                     )
                 else:
 
@@ -245,6 +256,10 @@ class LinuxWindow(QWidget):
                     self.report_stop()
             except InterruptedError:
                 self.report_stop()
+            except PermissionError:
+                self.status.emit(
+                    "Permission denied. Check your camera or display device permissions."
+                )
             except (OSError, RuntimeError, ValueError) as error:
                 self.status.emit(str(error))
             finally:

@@ -217,6 +217,17 @@ def power_mode(root=Path("/sys/class/power_supply")):
     return "battery" if external and not any(external) else "ac"
 
 
+def check_write(device):
+    original = device.read()
+    if original < 1:
+        raise ValueError("Raise brightness above zero before testing restoration.")
+    target = original + 5 if original <= 95 else original - 5
+    try:
+        return device.write(target)
+    finally:
+        device.write(original)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Experimental Linux brightness control")
     parser.add_argument("--list", action="store_true", help="List camera and backlight paths")
