@@ -108,6 +108,8 @@ def capture(path, cancelled=lambda: False):
                 except subprocess.TimeoutExpired:
                     continue
                 if process.returncode:
+                    if not Path(path).exists():
+                        raise FileNotFoundError(f"Camera disconnected: {path}")
                     raise RuntimeError("Camera capture failed. Check device permissions.")
                 return json.loads(output)
             if cancelled():
@@ -141,6 +143,9 @@ def run_session(
         options=DEFAULTS.copy(),
         expected=original,
     )
+    camera_path = Path(camera)
+    original_camera = camera_path.stat().st_rdev if camera_path.exists() else None
+    stable_camera = camera_path.is_symlink()
     last_write = None
     write_ms = None
 
@@ -156,9 +161,29 @@ def run_session(
         while not stop.is_set():
             generation = session.generation()
             capture_started = time.monotonic()
-            first = capture(camera, stop.is_set)
-            second = capture(camera, stop.is_set)
+            clock = getattr(time, "CLOCK_BOOTTIME", None)
+            boot_started = time.clock_gettime(clock) if clock is not None else None
+            try:
+                if original_camera is not None:
+                    current_camera = camera_path.stat().st_rdev
+                    if not stable_camera and current_camera != original_camera:
+                        raise RuntimeError("Camera identity changed. Select the camera again.")
+                first = capture(camera, stop.is_set)
+                second = capture(camera, stop.is_set)
+            except FileNotFoundError:
+                if not watch or not stable_camera or camera_path.exists():
+                    raise
+                report({"paused": "Camera disconnected. Waiting for the selected camera."})
+                if stop.wait(2):
+                    return
+                continue
             capture_ms = round((time.monotonic() - capture_started) * 1000)
+            if (
+                boot_started is not None
+                and time.clock_gettime(clock) - boot_started > capture_ms / 1000 + 1
+            ):
+                report({"paused": "System resumed. Discarded the old camera readings."})
+                continue
             write_ms = None
             decision_started = time.monotonic()
             decision = session.evaluate(average_pair(first, second), generation, stop.is_set)

@@ -214,6 +214,9 @@ class LinuxWindow(QWidget):
                 else:
 
                     def report(row):
+                        if "paused" in row:
+                            self.status.emit(row["paused"])
+                            return
                         action = "Applied" if row["applied"] else "Held"
                         self.status.emit(
                             f"{action} · Screen {row['current']}% · Target {row['target']}%"
