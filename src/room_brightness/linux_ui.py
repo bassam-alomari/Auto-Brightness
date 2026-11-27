@@ -1,5 +1,7 @@
 """Desktop controls for the Linux preview."""
 
+import json
+import os
 from pathlib import Path
 import sys
 import time
@@ -13,10 +15,13 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
+from .adaptive import CURVES
+from .recovery import write_atomic
 from .linux_control import Backlight, DdcDisplay, capture, run_session
 
 
@@ -31,6 +36,14 @@ class LinuxWindow(QWidget):
         self.stop = Event()
         self.stop_requested_at = None
         self.worker = None
+        config = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+        self.settings_path = config / "auto-brightness" / "linux-preview.json"
+        try:
+            saved = json.loads(self.settings_path.read_text(encoding="utf-8"))
+            if not isinstance(saved, dict):
+                saved = {}
+        except (OSError, ValueError):
+            saved = {}
         layout = QVBoxLayout(self)
         self.camera = QComboBox()
         self.display = QComboBox()
@@ -48,6 +61,23 @@ class LinuxWindow(QWidget):
         self.monitor.setChecked(True)
         self.restore = QCheckBox("Restore brightness when stopped")
         self.restore.setChecked(True)
+        self.curve = QComboBox()
+        self.curve.addItems(list(CURVES))
+        self.low, self.high = QSpinBox(), QSpinBox()
+        for field, key, default in ((self.low, "low", 10), (self.high, "high", 80)):
+            field.setRange(1, 100)
+            value = saved.get(key)
+            field.setValue(value if type(value) is int else default)
+        for field, key in (
+            (self.camera, "camera"),
+            (self.display, "display"),
+            (self.curve, "curve"),
+        ):
+            value = saved.get(key)
+            if isinstance(value, str) and field.findText(value) >= 0:
+                field.setCurrentText(value)
+        if isinstance(saved.get("edid"), str):
+            self.edid.setText(saved["edid"])
         self.check = QPushButton("Check compatibility (read-only)")
         self.start = QPushButton("Start")
         self.stop_button = QPushButton("Stop")
@@ -61,6 +91,12 @@ class LinuxWindow(QWidget):
             self.edid,
             self.monitor,
             self.restore,
+            QLabel("Curve"),
+            self.curve,
+            QLabel("Minimum brightness"),
+            self.low,
+            QLabel("Maximum brightness"),
+            self.high,
             self.check,
             self.start,
             self.stop_button,
@@ -81,6 +117,9 @@ class LinuxWindow(QWidget):
             self.edid,
             self.monitor,
             self.restore,
+            self.curve,
+            self.low,
+            self.high,
             self.start,
             self.check,
         ):
@@ -103,6 +142,29 @@ class LinuxWindow(QWidget):
         edid = self.edid.text().strip() if self.display.currentData() == "ddc" else ""
         external = self.display.currentData() == "ddc"
         monitor, restore = self.monitor.isChecked(), self.restore.isChecked()
+        curve, low, high = self.curve.currentText(), self.low.value(), self.high.value()
+        if low >= high:
+            self.details.setText("Minimum brightness must be below maximum.")
+            return
+        if not check:
+            try:
+                self.settings_path.parent.mkdir(parents=True, exist_ok=True)
+                write_atomic(
+                    self.settings_path,
+                    json.dumps(
+                        dict(
+                            camera=camera,
+                            display=target,
+                            edid=edid,
+                            curve=curve,
+                            low=low,
+                            high=high,
+                        )
+                    ),
+                )
+            except OSError as error:
+                self.details.setText(f"Could not save preferences: {error}")
+                return
         self.stop.clear()
         self.stop_requested_at = None
         self.set_busy(True)
@@ -133,7 +195,17 @@ class LinuxWindow(QWidget):
                             )
                         )
 
-                    run_session(camera, device, self.stop, report, monitor=monitor, restore=restore)
+                    run_session(
+                        camera,
+                        device,
+                        self.stop,
+                        report,
+                        monitor=monitor,
+                        restore=restore,
+                        low=low,
+                        high=high,
+                        curve=curve,
+                    )
                 if self.stop.is_set():
                     self.report_stop()
             except InterruptedError:

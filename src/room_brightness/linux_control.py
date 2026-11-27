@@ -119,10 +119,27 @@ def capture(path, cancelled=lambda: False):
                 process.communicate()
 
 
-def run_session(camera, device, stop, report, *, monitor=True, watch=True, restore=False):
+def run_session(
+    camera,
+    device,
+    stop,
+    report,
+    *,
+    monitor=True,
+    watch=True,
+    restore=False,
+    low=10,
+    high=80,
+    curve="custom",
+):
     original = device.read()
     controller = AdaptiveController(
-        low=10, high=80, mapping="image", options=DEFAULTS.copy(), expected=original
+        low=low,
+        high=high,
+        image_curve=curve,
+        mapping="image",
+        options=DEFAULTS.copy(),
+        expected=original,
     )
     last_write = None
     write_ms = None
