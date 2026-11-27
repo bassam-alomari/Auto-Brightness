@@ -8,6 +8,7 @@ from tkinter import messagebox, ttk
 from .brightness import brightness, set_checked, verify_control, smooth_to
 from .tuning import transition_duration
 from .camera import sample
+from .control_session import evaluate_target
 from .adaptive import AdaptiveController, curve_target
 from .widgets import RoundedCard, RoundedButton, PALETTES
 from . import startup
@@ -786,7 +787,7 @@ class App:
             current = brightness()
             now = time.monotonic()
             was_anchor = self.controller.needs_anchor
-            wanted = self.controller.update(reading, current, now)
+            wanted = evaluate_target(self.controller, reading, current, now).target
             manual = now < self.controller.hold_until
             if manual:
                 self.original = current

@@ -13,6 +13,11 @@ class Decision:
     applied: bool = False
 
 
+def evaluate_target(controller, reading, current, now):
+    target = controller.update(reading, current, now)
+    return Decision(current, target, controller.reason)
+
+
 class ControlSession:
     def __init__(self, controller, read, write, monitor=False):
         self.controller = controller
@@ -35,16 +40,15 @@ class ControlSession:
         with self._lock:
             if generation != self._generation or cancelled():
                 return Decision(current, current, "cancelled")
-            target = self.controller.update(reading, current, time.monotonic())
-            reason = self.controller.reason
-        if self.monitor or target == current:
-            return Decision(current, target, reason)
+            decision = evaluate_target(self.controller, reading, current, time.monotonic())
+        if self.monitor or decision.target == current:
+            return decision
         fresh = self.read()
         with self._lock:
             if generation != self._generation or cancelled():
                 return Decision(fresh, fresh, "cancelled")
             if self.controller.observe(fresh, time.monotonic()):
                 return Decision(fresh, fresh, "manual_hold")
-            actual = self.write(target)
+            actual = self.write(decision.target)
             self.controller.committed(actual)
-        return Decision(actual, target, reason, True)
+        return Decision(actual, decision.target, decision.reason, True)
