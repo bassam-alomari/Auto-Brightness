@@ -63,14 +63,11 @@ class LinuxWindow(QWidget):
             field.setRange(1, 100)
             value = saved.get(key)
             field.setValue(value if type(value) is int else default)
-        for field, key in (
-            (self.camera, "camera"),
-            (self.display, "display"),
-            (self.curve, "curve"),
-        ):
-            value = saved.get(key)
-            if isinstance(value, str) and field.findText(value) >= 0:
-                field.setCurrentText(value)
+        if isinstance(saved.get("camera"), str):
+            self.camera.setCurrentIndex(self.camera.findText(saved["camera"]))
+        curve = saved.get("curve")
+        if isinstance(curve, str) and self.curve.findText(curve) >= 0:
+            self.curve.setCurrentText(curve)
         if isinstance(saved.get("display"), str):
             self.display.setCurrentIndex(self.display.findData(saved["display"]))
         if isinstance(saved.get("edid"), str):
